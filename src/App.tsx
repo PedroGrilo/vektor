@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Crosshair, Gauge as GaugeIcon, History, Minus, MonitorCog, Square, SlidersHorizontal, X } from "lucide-react";
+import { Crosshair, Gauge as GaugeIcon, History, Minus, Square, SlidersHorizontal, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { inTauri } from "./api";
 import { backend } from "./mock";
@@ -8,15 +8,13 @@ import { ToastProvider, usePoll } from "./ui";
 import Dashboard from "./pages/Dashboard";
 import Optimize from "./pages/Optimize";
 import Cs2 from "./pages/Cs2";
-import Gpu from "./pages/Gpu";
 import Restore from "./pages/Restore";
 
-export type PageId = "dashboard" | "optimize" | "cs2" | "gpu" | "restore";
+export type PageId = "dashboard" | "optimize" | "cs2" | "restore";
 
 const NAV: { id: PageId; label: string; icon: typeof GaugeIcon; section?: string }[] = [
   { id: "dashboard", label: "Painel", icon: GaugeIcon, section: "Sistema" },
   { id: "optimize", label: "Otimizações", icon: SlidersHorizontal },
-  { id: "gpu", label: "GPU & Ecrã", icon: MonitorCog },
   { id: "cs2", label: "Counter-Strike 2", icon: Crosshair, section: "Jogo" },
   { id: "restore", label: "Restaurar", icon: History, section: "Segurança" },
 ];
@@ -99,7 +97,6 @@ export default function App() {
               {page === "dashboard" && <Dashboard go={setPage} />}
               {page === "optimize" && <Optimize />}
               {page === "cs2" && <Cs2 />}
-              {page === "gpu" && <Gpu />}
               {page === "restore" && <Restore />}
             </motion.main>
           </AnimatePresence>
