@@ -1,9 +1,10 @@
+mod cleanup;
 mod commands;
 mod cs2;
 mod error;
-mod gpu;
 mod journal;
-mod ryzen;
+mod memory;
+mod nvidia;
 mod system;
 mod tweaks;
 mod undo;
@@ -11,13 +12,13 @@ mod win;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // `vektor.exe --service` is started by the Service Control Manager.
+    if std::env::args().any(|a| a == memory::SERVICE_ARG) {
+        memory::service::run_as_service();
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup(|_app| {
-            // Background loop that applies vibrance while CS2 has focus.
-            gpu::vibrance_watcher::spawn();
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             // system
             commands::system_info,
@@ -27,7 +28,8 @@ pub fn run() {
             commands::apply_tweak,
             commands::revert_tweak,
             commands::revert_all,
-            commands::clean_shader_cache,
+            commands::clean_scan,
+            commands::clean_run,
             commands::list_background_apps,
             commands::kill_background_apps,
             // cs2
@@ -39,16 +41,16 @@ pub fn run() {
             commands::cs2_recommended_launch_options,
             commands::cs2_benchmark_start,
             commands::cs2_benchmark_poll,
-            // gpu
-            commands::gpu_status,
-            commands::gpu_apply_nvidia_profile,
-            commands::gpu_set_vibrance,
-            commands::gpu_vibrance_auto,
-            commands::gpu_set_display_mode,
-            // ryzen
-            commands::ryzen_status,
-            commands::ryzen_apply_curve,
-            commands::ryzen_clear_curve,
+            // memory
+            commands::memory_status,
+            commands::memory_set_config,
+            commands::memory_install_service,
+            commands::memory_uninstall_service,
+            commands::memory_purge_now,
+            // nvidia
+            commands::nvidia_status,
+            commands::nvidia_apply_global,
+            commands::nvidia_revert_global,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vektor");

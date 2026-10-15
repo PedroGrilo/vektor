@@ -110,51 +110,60 @@ export interface BenchStatus {
   message: string | null;
 }
 
-// ---------- gpu ----------
-export interface DisplayMode {
-  width: number;
-  height: number;
-  refresh: number;
-}
-export interface DisplayInfo {
-  device: string; // "\\.\DISPLAY1"
-  name: string;
-  primary: boolean;
-  current: DisplayMode;
-  modes: DisplayMode[];
-}
-export interface GpuStatus {
-  vendor: "nvidia" | "amd" | "intel" | "other";
-  nvapiAvailable: boolean;
-  adlAvailable: boolean;
-  /** 0..100, null if unknown */
-  vibrance: number | null;
-  vibranceAuto: boolean;
-  nvidiaProfileApplied: boolean;
-  displays: DisplayInfo[];
-}
-export interface NvPreset {
-  lowLatency: "off" | "on" | "ultra";
-  maxPreRenderedFrames: number; // 1..4
-  powerMode: "optimal" | "max-performance";
-  vsync: "app" | "off";
-  textureFiltering: "quality" | "performance" | "high-performance";
-  shaderCache: "default" | "unlimited";
-  threadedOptimization: "auto" | "on" | "off";
+// ---------- cleanup ----------
+export interface CleanTarget {
+  id: string;
+  title: string;
+  description: string;
+  /** included in the default selection */
+  recommended: boolean;
+  /** shown before cleaning, e.g. side effects */
+  warning: string | null;
+  sizeBytes: number;
+  files: number;
+  available: boolean;
 }
 
-// ---------- ryzen ----------
-export interface RyzenStatus {
-  supported: boolean;
-  reason: string | null;
-  codename: string | null;
-  pawnioInstalled: boolean;
-  /** current all-core Curve Optimizer offset if readable */
-  currentOffset: number | null;
-  /** offset Vektor applied this boot (CO resets on reboot) */
-  appliedOffset: number | null;
-  minOffset: number; // e.g. -30
-  maxOffset: number; // 0
+// ---------- memory (standby list cleaner, ISLC-style) ----------
+export interface MemoryConfig {
+  enabled: boolean;
+  /** purge when the standby list is at least this big (MB) */
+  standbyThresholdMb: number;
+  /** ...and free memory is below this (MB) */
+  freeThresholdMb: number;
+  /** polling interval in seconds */
+  intervalSec: number;
+}
+export interface MemoryStatus {
+  serviceInstalled: boolean;
+  serviceRunning: boolean;
+  config: MemoryConfig;
+  totalMb: number;
+  freeMb: number;
+  standbyMb: number;
+  modifiedMb: number;
+  /** purges done by the service since it started */
+  purgeCount: number;
+  /** ISO timestamp of the last purge by the service */
+  lastPurge: string | null;
+}
+
+// ---------- nvidia (Profile Inspector, global "Base Profile") ----------
+export interface NvGlobalOptions {
+  /** Power management mode: prefer maximum performance */
+  maxPerformancePower: boolean;
+  /** Low latency mode On (max pre-rendered frames = 1) */
+  lowLatency: boolean;
+  /** Texture filtering quality: high performance (+ trilinear/aniso optimizations) */
+  textureHighPerformance: boolean;
+  /** Shader cache on with unlimited size */
+  unlimitedShaderCache: boolean;
+}
+export interface NvidiaStatus {
+  nvidiaGpu: boolean;
+  inspectorAvailable: boolean;
+  applied: boolean;
+  inspectorVersion: string | null;
 }
 
 export const api = {
@@ -165,7 +174,8 @@ export const api = {
   applyTweak: (id: string) => invoke<TweakInfo>("apply_tweak", { id }),
   revertTweak: (id: string) => invoke<TweakInfo>("revert_tweak", { id }),
   revertAll: () => invoke<void>("revert_all"),
-  cleanShaderCache: () => invoke<CleanReport>("clean_shader_cache"),
+  cleanScan: () => invoke<CleanTarget[]>("clean_scan"),
+  cleanRun: (ids: string[]) => invoke<CleanReport>("clean_run", { ids }),
   listBackgroundApps: () => invoke<ProcInfo[]>("list_background_apps"),
   killBackgroundApps: (names: string[]) => invoke<number>("kill_background_apps", { names }),
 
@@ -179,17 +189,15 @@ export const api = {
   cs2BenchmarkStart: () => invoke<void>("cs2_benchmark_start"),
   cs2BenchmarkPoll: () => invoke<BenchStatus>("cs2_benchmark_poll"),
 
-  gpuStatus: () => invoke<GpuStatus>("gpu_status"),
-  gpuApplyNvidiaProfile: (preset: NvPreset) => invoke<void>("gpu_apply_nvidia_profile", { preset }),
-  gpuSetVibrance: (level: number) => invoke<void>("gpu_set_vibrance", { level }),
-  gpuVibranceAuto: (enabled: boolean, level: number) =>
-    invoke<void>("gpu_vibrance_auto", { enabled, level }),
-  gpuSetDisplayMode: (device: string, width: number, height: number, refresh: number) =>
-    invoke<void>("gpu_set_display_mode", { device, width, height, refresh }),
+  memoryStatus: () => invoke<MemoryStatus>("memory_status"),
+  memorySetConfig: (config: MemoryConfig) => invoke<MemoryStatus>("memory_set_config", { config }),
+  memoryInstallService: () => invoke<MemoryStatus>("memory_install_service"),
+  memoryUninstallService: () => invoke<MemoryStatus>("memory_uninstall_service"),
+  memoryPurgeNow: () => invoke<MemoryStatus>("memory_purge_now"),
 
-  ryzenStatus: () => invoke<RyzenStatus>("ryzen_status"),
-  ryzenApplyCurve: (offset: number) => invoke<RyzenStatus>("ryzen_apply_curve", { offset }),
-  ryzenClearCurve: () => invoke<RyzenStatus>("ryzen_clear_curve"),
+  nvidiaStatus: () => invoke<NvidiaStatus>("nvidia_status"),
+  nvidiaApplyGlobal: (options: NvGlobalOptions) => invoke<NvidiaStatus>("nvidia_apply_global", { options }),
+  nvidiaRevertGlobal: () => invoke<NvidiaStatus>("nvidia_revert_global"),
 };
 
 /** True when running inside Tauri (false in a plain browser preview). */

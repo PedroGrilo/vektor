@@ -2,7 +2,7 @@
 //! Blocking work runs on the blocking thread pool so the UI never stalls.
 
 use crate::error::{Error, Result};
-use crate::{cs2, gpu, journal, ryzen, system, tweaks};
+use crate::{cleanup, cs2, journal, memory, nvidia, system, tweaks};
 
 async fn blocking<T, F>(f: F) -> Result<T>
 where
@@ -49,8 +49,13 @@ pub async fn revert_all() -> Result<()> {
 }
 
 #[tauri::command]
-pub async fn clean_shader_cache() -> Result<tweaks::CleanReport> {
-    blocking(tweaks::cache::clean_shader_caches).await
+pub async fn clean_scan() -> Result<Vec<cleanup::CleanTarget>> {
+    blocking(cleanup::scan).await
+}
+
+#[tauri::command]
+pub async fn clean_run(ids: Vec<String>) -> Result<tweaks::CleanReport> {
+    blocking(move || cleanup::run(&ids)).await
 }
 
 #[tauri::command]
@@ -105,47 +110,46 @@ pub async fn cs2_benchmark_poll() -> Result<cs2::benchmark::BenchStatus> {
     blocking(cs2::benchmark::poll).await
 }
 
-// ---------- gpu ----------
+// ---------- memory (standby list cleaner) ----------
 
 #[tauri::command]
-pub async fn gpu_status() -> Result<gpu::GpuStatus> {
-    blocking(gpu::status).await
+pub async fn memory_status() -> Result<memory::MemoryStatus> {
+    blocking(memory::status).await
 }
 
 #[tauri::command]
-pub async fn gpu_apply_nvidia_profile(preset: gpu::nvidia::NvPreset) -> Result<()> {
-    blocking(move || gpu::nvidia::apply_cs2_profile(&preset)).await
+pub async fn memory_set_config(config: memory::MemoryConfig) -> Result<memory::MemoryStatus> {
+    blocking(move || memory::set_config(&config)).await
 }
 
 #[tauri::command]
-pub async fn gpu_set_vibrance(level: i32) -> Result<()> {
-    blocking(move || gpu::set_vibrance_all(level)).await
+pub async fn memory_install_service() -> Result<memory::MemoryStatus> {
+    blocking(memory::install_service).await
 }
 
 #[tauri::command]
-pub async fn gpu_vibrance_auto(enabled: bool, level: i32) -> Result<()> {
-    gpu::vibrance_watcher::configure(enabled, level);
-    Ok(())
+pub async fn memory_uninstall_service() -> Result<memory::MemoryStatus> {
+    blocking(memory::uninstall_service).await
 }
 
 #[tauri::command]
-pub async fn gpu_set_display_mode(device: String, width: u32, height: u32, refresh: u32) -> Result<()> {
-    blocking(move || gpu::display::apply_mode_journaled(&device, width, height, refresh)).await
+pub async fn memory_purge_now() -> Result<memory::MemoryStatus> {
+    blocking(memory::purge_now).await
 }
 
-// ---------- ryzen ----------
+// ---------- nvidia (Profile Inspector) ----------
 
 #[tauri::command]
-pub async fn ryzen_status() -> Result<ryzen::RyzenStatus> {
-    blocking(ryzen::status).await
-}
-
-#[tauri::command]
-pub async fn ryzen_apply_curve(offset: i32) -> Result<ryzen::RyzenStatus> {
-    blocking(move || ryzen::apply_curve(offset)).await
+pub async fn nvidia_status(app: tauri::AppHandle) -> Result<nvidia::NvidiaStatus> {
+    blocking(move || nvidia::status(&app)).await
 }
 
 #[tauri::command]
-pub async fn ryzen_clear_curve() -> Result<ryzen::RyzenStatus> {
-    blocking(ryzen::clear_curve).await
+pub async fn nvidia_apply_global(app: tauri::AppHandle, options: nvidia::NvGlobalOptions) -> Result<nvidia::NvidiaStatus> {
+    blocking(move || nvidia::apply_global(&app, &options)).await
+}
+
+#[tauri::command]
+pub async fn nvidia_revert_global(app: tauri::AppHandle) -> Result<nvidia::NvidiaStatus> {
+    blocking(move || nvidia::revert_global(&app)).await
 }

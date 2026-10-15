@@ -40,16 +40,8 @@ pub enum Undo {
     File { path: PathBuf, backup: Option<PathBuf> },
     /// Restore the read-only attribute.
     FileReadonly { path: PathBuf, was_readonly: bool },
-    /// Restore an NVIDIA DRS setting on a profile (None = delete back to driver default).
-    NvidiaSetting { profile: String, setting_id: u32, previous: Option<u32> },
-    /// Delete an NVIDIA profile Vektor created.
-    NvidiaProfileCreated { profile: String },
-    /// Restore digital vibrance/saturation for a display.
-    Vibrance { display: String, previous: i32 },
-    /// Restore a display mode.
-    DisplayMode { device: String, width: u32, height: u32, refresh: u32 },
-    /// Reset Curve Optimizer all-core offset to `previous` (normally 0).
-    CurveOptimizer { previous: i32 },
+    /// Re-import the saved NVIDIA "Base Profile" snapshot (.nip) in replace mode.
+    NvidiaBaseProfile { snapshot: PathBuf },
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

@@ -2,7 +2,7 @@
 
 use crate::error::Result;
 use crate::journal::Undo;
-use crate::{gpu, ryzen, win};
+use crate::{nvidia, win};
 
 pub fn run(step: &Undo) -> Result<()> {
     match step {
@@ -18,14 +18,6 @@ pub fn run(step: &Undo) -> Result<()> {
         }
         Undo::File { path, backup } => win::files::restore(path, backup.as_deref()),
         Undo::FileReadonly { path, was_readonly } => win::files::set_readonly(path, *was_readonly),
-        Undo::NvidiaSetting { profile, setting_id, previous } => {
-            gpu::nvidia::restore_setting(profile, *setting_id, *previous)
-        }
-        Undo::NvidiaProfileCreated { profile } => gpu::nvidia::delete_profile(profile),
-        Undo::Vibrance { display, previous } => gpu::restore_vibrance(display, *previous),
-        Undo::DisplayMode { device, width, height, refresh } => {
-            gpu::display::set_mode(device, *width, *height, *refresh).map(|_| ())
-        }
-        Undo::CurveOptimizer { previous } => ryzen::set_all_core(*previous),
+        Undo::NvidiaBaseProfile { snapshot } => nvidia::restore_base_profile(snapshot),
     }
 }
