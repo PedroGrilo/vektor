@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Crosshair, Gauge as GaugeIcon, History, Minus, Square, SlidersHorizontal, X } from "lucide-react";
+import { Crosshair, Gauge as GaugeIcon, History, MemoryStick, Minus, MonitorCog, Square, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { inTauri } from "./api";
 import { backend } from "./mock";
@@ -9,12 +9,18 @@ import Dashboard from "./pages/Dashboard";
 import Optimize from "./pages/Optimize";
 import Cs2 from "./pages/Cs2";
 import Restore from "./pages/Restore";
+import Cleanup from "./pages/Cleanup";
+import Memory from "./pages/Memory";
+import Nvidia from "./pages/Nvidia";
 
-export type PageId = "dashboard" | "optimize" | "cs2" | "restore";
+export type PageId = "dashboard" | "optimize" | "cleanup" | "memory" | "nvidia" | "cs2" | "restore";
 
 const NAV: { id: PageId; label: string; icon: typeof GaugeIcon; section?: string }[] = [
   { id: "dashboard", label: "Painel", icon: GaugeIcon, section: "Sistema" },
   { id: "optimize", label: "Otimizações", icon: SlidersHorizontal },
+  { id: "cleanup", label: "Limpeza", icon: Trash2 },
+  { id: "memory", label: "Memória", icon: MemoryStick },
+  { id: "nvidia", label: "NVIDIA", icon: MonitorCog },
   { id: "cs2", label: "Counter-Strike 2", icon: Crosshair, section: "Jogo" },
   { id: "restore", label: "Restaurar", icon: History, section: "Segurança" },
 ];
@@ -65,7 +71,7 @@ function SidebarStatus() {
 }
 
 export default function App() {
-  const [page, setPage] = useState<PageId>("dashboard");
+  const [page, setPage] = useState<PageId>(() => (window.location.hash.slice(1) as PageId) || "dashboard");
   return (
     <ToastProvider>
       <div className="backdrop">
@@ -96,6 +102,9 @@ export default function App() {
               transition={{ duration: 0.22, ease: "easeOut" }}>
               {page === "dashboard" && <Dashboard go={setPage} />}
               {page === "optimize" && <Optimize />}
+              {page === "cleanup" && <Cleanup />}
+              {page === "memory" && <Memory />}
+              {page === "nvidia" && <Nvidia />}
               {page === "cs2" && <Cs2 />}
               {page === "restore" && <Restore />}
             </motion.main>

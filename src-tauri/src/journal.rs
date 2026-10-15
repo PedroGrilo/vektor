@@ -42,6 +42,8 @@ pub enum Undo {
     FileReadonly { path: PathBuf, was_readonly: bool },
     /// Re-import the saved NVIDIA "Base Profile" snapshot (.nip) in replace mode.
     NvidiaBaseProfile { snapshot: PathBuf },
+    /// Stop and delete the VektorMemory service.
+    MemoryService,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -97,6 +99,16 @@ pub fn record(tweak_id: &str, undo: Undo) -> Result<()> {
     let mut j = load()?;
     j.entries.entry(tweak_id.to_string()).or_default().push(undo);
     save(&j)
+}
+
+/// Drop the entries for `tweak_id` without running them (the change was undone by hand).
+pub fn forget(tweak_id: &str) -> Result<()> {
+    let _g = LOCK.lock().unwrap();
+    let mut j = load()?;
+    if j.entries.remove(tweak_id).is_some() {
+        save(&j)?;
+    }
+    Ok(())
 }
 
 pub fn is_applied(tweak_id: &str) -> bool {

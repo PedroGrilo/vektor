@@ -1,6 +1,6 @@
 // In-browser preview data so the UI can be designed with `bun run dev` outside Tauri.
 import { api, inTauri } from "./api";
-import type { BenchStatus, ConfigPreset, Cs2Config, GpuStatus, NvPreset, TweakInfo } from "./api";
+import type { BenchStatus, CleanTarget, ConfigPreset, Cs2Config, MemoryConfig, MemoryStatus, NvidiaStatus, TweakInfo } from "./api";
 
 const wait = <T,>(v: T, ms = 350) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), ms));
 
@@ -30,11 +30,19 @@ const presets: ConfigPreset[] = [
 ];
 
 let bench: BenchStatus = { state: "idle", avgFps: null, p1Fps: null, message: null };
-let gpu: GpuStatus = {
-  vendor: "nvidia", nvapiAvailable: true, adlAvailable: false, vibrance: 50, vibranceAuto: false, nvidiaProfileApplied: false,
-  displays: [{ device: "\\\\.\\DISPLAY1", name: "AOC 24G2", primary: true, current: { width: 1920, height: 1080, refresh: 144 },
-    modes: [{ width: 1920, height: 1080, refresh: 144 }, { width: 1280, height: 960, refresh: 144 }, { width: 1440, height: 1080, refresh: 144 }, { width: 1024, height: 768, refresh: 144 }] }],
-};
+const MB = 1024 * 1024;
+const cleanTargets: CleanTarget[] = [
+  { id: "user-temp", title: "Temporários do utilizador", description: "%TEMP% — ficheiros com mais de 24 h.", recommended: true, warning: null, sizeBytes: 2140 * MB, files: 8312, available: true },
+  { id: "windows-temp", title: "Temporários do Windows", description: "C:\\Windows\\Temp", recommended: true, warning: null, sizeBytes: 380 * MB, files: 912, available: true },
+  { id: "shader-cache-drivers", title: "Cache de shaders das drivers", description: "DirectX, NVIDIA, AMD e Intel.", recommended: true, warning: "Os jogos recompilam shaders no próximo arranque.", sizeBytes: 1210 * MB, files: 2400, available: true },
+  { id: "wer", title: "Relatórios de erros (WER)", description: "Relatórios de falhas enviados à Microsoft.", recommended: true, warning: null, sizeBytes: 96 * MB, files: 140, available: true },
+  { id: "crash-dumps", title: "Dumps de falhas", description: "Minidumps e MEMORY.DMP.", recommended: true, warning: null, sizeBytes: 812 * MB, files: 12, available: true },
+  { id: "recycle-bin", title: "Reciclagem", description: "Esvazia a reciclagem.", recommended: false, warning: "Permanente — não é possível recuperar.", sizeBytes: 3400 * MB, files: 210, available: true },
+  { id: "prefetch", title: "Prefetch", description: "Dados de arranque rápido de apps.", recommended: false, warning: "Não dá FPS; as apps abrem mais devagar até o Windows reconstruir.", sizeBytes: 42 * MB, files: 256, available: true },
+];
+let memCfg: MemoryConfig = { enabled: true, standbyThresholdMb: 1024, freeThresholdMb: 1024, intervalSec: 5 };
+let mem: MemoryStatus = { serviceInstalled: false, serviceRunning: false, config: memCfg, totalMb: 32768, freeMb: 812, standbyMb: 14320, modifiedMb: 210, purgeCount: 0, lastPurge: null };
+let nv: NvidiaStatus = { nvidiaGpu: true, inspectorAvailable: true, applied: false, inspectorVersion: "3.0.2.1" };
 
 const mock: typeof api = {
   systemInfo: () => wait({ osName: "Windows 11 Pro", osBuild: "26100", hostname: "CLIENTE-PC", cpu: { name: "AMD Ryzen 7 7800X3D 8-Core Processor", vendor: "amd", cores: 8, threads: 16, zenGen: 4 }, gpus: [{ name: "NVIDIA GeForce RTX 4070", vendor: "nvidia", driverVersion: "32.0.15.6614", vramMb: 12288 }], ramTotalGb: 32, isAdmin: true }),
@@ -43,7 +51,8 @@ const mock: typeof api = {
   applyTweak: (id) => { tweaks = tweaks.map((t) => (t.id === id ? { ...t, applied: true } : t)); return wait(tweaks.find((t) => t.id === id)!, 600); },
   revertTweak: (id) => { tweaks = tweaks.map((t) => (t.id === id ? { ...t, applied: false } : t)); return wait(tweaks.find((t) => t.id === id)!, 500); },
   revertAll: () => { tweaks = tweaks.map((t) => ({ ...t, applied: false })); return wait(undefined, 800); },
-  cleanShaderCache: () => wait({ freedBytes: 1_284_000_000, filesRemoved: 4210, paths: ["D3DSCache", "NVIDIA\\DXCache", "shadercache\\730"] }, 1200),
+  cleanScan: () => wait(cleanTargets, 900),
+  cleanRun: (ids) => wait({ freedBytes: cleanTargets.filter((t) => ids.includes(t.id)).reduce((a, t) => a + t.sizeBytes, 0), filesRemoved: 4210, paths: ids }, 1500),
   listBackgroundApps: () => wait([{ name: "Discord.exe", pid: 1, memoryMb: 412, label: "Discord" }, { name: "chrome.exe", pid: 2, memoryMb: 1830, label: "Google Chrome" }, { name: "Spotify.exe", pid: 3, memoryMb: 260, label: "Spotify" }]),
   killBackgroundApps: (names) => wait(names.length, 700),
   cs2Detect: () => wait({ steamPath: "C:\\Program Files (x86)\\Steam", gamePath: "D:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive", installed: true, running: false, users: [{ steamId64: "76561198000000000", accountId: 39734272, personaName: "cliente", mostRecent: true }], launchOptions: "-novid" }),
@@ -54,14 +63,14 @@ const mock: typeof api = {
   cs2RecommendedLaunchOptions: () => wait("-novid -nojoy +exec vektor"),
   cs2BenchmarkStart: () => { bench = { state: "running", avgFps: null, p1Fps: null, message: "A correr benchmark…" }; setTimeout(() => { bench = { state: "done", avgFps: 612.4, p1Fps: 248.9, message: null }; }, 5000); return wait(undefined); },
   cs2BenchmarkPoll: () => wait(bench, 100),
-  gpuStatus: () => wait(gpu),
-  gpuApplyNvidiaProfile: (_p: NvPreset) => { gpu = { ...gpu, nvidiaProfileApplied: true }; return wait(undefined, 700); },
-  gpuSetVibrance: (level) => { gpu = { ...gpu, vibrance: level }; return wait(undefined, 100); },
-  gpuVibranceAuto: (enabled) => { gpu = { ...gpu, vibranceAuto: enabled }; return wait(undefined, 100); },
-  gpuSetDisplayMode: () => wait(undefined, 600),
-  ryzenStatus: () => wait({ supported: false, reason: "Não disponível", codename: null, pawnioInstalled: false, currentOffset: null, appliedOffset: null, minOffset: 0, maxOffset: 0 }),
-  ryzenApplyCurve: () => Promise.reject("Não disponível"),
-  ryzenClearCurve: () => Promise.reject("Não disponível"),
+  memoryStatus: () => wait({ ...mem, freeMb: 700 + Math.random() * 300, standbyMb: 14000 + Math.random() * 800 }, 150),
+  memorySetConfig: (c) => { memCfg = c; mem = { ...mem, config: c }; return wait(mem); },
+  memoryInstallService: () => { mem = { ...mem, serviceInstalled: true, serviceRunning: true }; return wait(mem, 800); },
+  memoryUninstallService: () => { mem = { ...mem, serviceInstalled: false, serviceRunning: false }; return wait(mem, 600); },
+  memoryPurgeNow: () => { mem = { ...mem, freeMb: 14800, standbyMb: 320 }; return wait(mem, 500); },
+  nvidiaStatus: () => wait(nv),
+  nvidiaApplyGlobal: () => { nv = { ...nv, applied: true }; return wait(nv, 1500); },
+  nvidiaRevertGlobal: () => { nv = { ...nv, applied: false }; return wait(nv, 1200); },
 };
 
 export const backend: typeof api = inTauri ? api : mock;

@@ -30,7 +30,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "Link Consulting",
     "shortDescription": "Otimizador de PC e CS2",
     "icon": [
@@ -41,7 +43,13 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "nsis": { "installMode": "perMachine" }
-    }
+      "nsis": {
+        "installMode": "perMachine",
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    },
+    "resources": [
+      "resources/npi/*"
+    ]
   }
 }

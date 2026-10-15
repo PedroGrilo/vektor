@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Loader2, Sparkles, Trash2, XCircle } from "lucide-react";
+import { Loader2, Sparkles, XCircle } from "lucide-react";
 import type { ProcInfo, TweakCategory, TweakInfo } from "../api";
 import { backend } from "../mock";
-import { PageHead, RiskChip, Toggle, fmtBytes, useLoad, useToast } from "../ui";
+import { PageHead, RiskChip, Toggle, useLoad, useToast } from "../ui";
 
 const CATS: { id: TweakCategory | "all"; label: string }[] = [
   { id: "all", label: "Todas" },
@@ -71,45 +71,10 @@ export default function Optimize() {
         ))}
       </div>
 
-      <div className="grid-2" style={{ marginTop: 22 }}>
-        <ShaderCache />
+      <div style={{ marginTop: 22 }}>
         <BackgroundApps />
       </div>
     </>
-  );
-}
-
-function ShaderCache() {
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  const [last, setLast] = useState<string | null>(null);
-  const run = async () => {
-    setBusy(true);
-    try {
-      const r = await backend.cleanShaderCache();
-      setLast(`${fmtBytes(r.freedBytes)} libertados · ${r.filesRemoved} ficheiros`);
-      toast("ok", `Cache de shaders limpa: ${fmtBytes(r.freedBytes)}`);
-    } catch (e) {
-      toast("err", String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="panel">
-      <div className="row between">
-        <div>
-          <h3>Cache de shaders</h3>
-          <div className="sub">Limpa as caches do DirectX, das drivers e do CS2. O jogo recompila os shaders no próximo arranque — útil depois de atualizar drivers ou quando há stutters.</div>
-        </div>
-      </div>
-      <div className="row between" style={{ marginTop: 16 }}>
-        <span className="mono faint" style={{ fontSize: 12 }}>{last ?? "—"}</span>
-        <button className="btn" onClick={run} disabled={busy}>
-          {busy ? <Loader2 size={15} className="spin" /> : <Trash2 size={15} />} Limpar
-        </button>
-      </div>
-    </div>
   );
 }
 

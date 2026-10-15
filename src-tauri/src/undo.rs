@@ -2,7 +2,7 @@
 
 use crate::error::Result;
 use crate::journal::Undo;
-use crate::{nvidia, win};
+use crate::{memory, nvidia, win};
 
 pub fn run(step: &Undo) -> Result<()> {
     match step {
@@ -19,5 +19,6 @@ pub fn run(step: &Undo) -> Result<()> {
         Undo::File { path, backup } => win::files::restore(path, backup.as_deref()),
         Undo::FileReadonly { path, was_readonly } => win::files::set_readonly(path, *was_readonly),
         Undo::NvidiaBaseProfile { snapshot } => nvidia::restore_base_profile(snapshot),
+        Undo::MemoryService => memory::uninstall_service_quiet(),
     }
 }

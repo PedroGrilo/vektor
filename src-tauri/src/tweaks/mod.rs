@@ -1,7 +1,6 @@
 //! Catalog of reversible Windows tweaks. Every change is journaled before it
 //! is made, and reverting simply replays the journal for that tweak id.
 
-pub mod cache;
 pub mod processes;
 
 use serde::Serialize;
@@ -71,6 +70,30 @@ const CS2_IFEO: &str =
 const GPU_PREFS: &str = r"Software\Microsoft\DirectX\UserGpuPreferences";
 const COMPAT_LAYERS: &str = r"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers";
 const FSO_FLAG: &str = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
+const DX_GLOBAL: &str = "DirectXUserGlobalSettings";
+const PERSONALIZE: &str = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+
+/// Set `key=value;` inside a DirectX "k=v;k=v;" settings string, keeping other entries.
+fn merge_dx_setting(existing: &str, key: &str, value: &str) -> String {
+    let mut out = String::new();
+    let mut found = false;
+    for part in existing.split(';').map(str::trim).filter(|p| !p.is_empty()) {
+        let k = part.split_once('=').map_or(part, |(k, _)| k).trim();
+        if k.eq_ignore_ascii_case(key) {
+            if !found {
+                out.push_str(&format!("{key}={value};"));
+                found = true;
+            }
+        } else {
+            out.push_str(part);
+            out.push(';');
+        }
+    }
+    if !found {
+        out.push_str(&format!("{key}={value};"));
+    }
+    out
+}
 
 /// What a tweak needs to be applicable.
 #[derive(Clone, Copy)]
@@ -288,6 +311,99 @@ static TWEAKS: &[Tweak] = &[
         needs: Needs::Service("DiagTrack"),
         apply: |id| services::disable_journaled(id, "DiagTrack"),
     },
+    Tweak {
+        id: "power-throttling-off",
+        category: Category::Power,
+        title: "Desligar Power Throttling",
+        description: "Impede o Windows de limitar a CPU de processos que considera em segundo plano. \
+                      Útil sobretudo em portáteis; aumenta o consumo de energia.",
+        risk: Risk::Low,
+        requires_reboot: true,
+        needs: Needs::Nothing,
+        apply: |id| {
+            set_all(id, &[(
+                Hive::Hklm,
+                r"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling",
+                "PowerThrottlingOff",
+                d(1),
+            )])
+        },
+    },
+    Tweak {
+        id: "windowed-game-optimizations",
+        category: Category::Gpu,
+        title: "Otimizações para jogos em janela",
+        description: "Ativa o modelo de apresentação flip para jogos DirectX 10/11 em janela ou sem margens, \
+                      com latência semelhante ao ecrã inteiro (Windows 11). Mantém as outras definições gráficas do utilizador.",
+        risk: Risk::Low,
+        requires_reboot: false,
+        needs: Needs::Nothing,
+        apply: |id| {
+            let current = match registry::read(Hive::Hkcu, GPU_PREFS, DX_GLOBAL)? {
+                Some(RegValue::Sz(s)) => s,
+                _ => String::new(),
+            };
+            let merged = merge_dx_setting(&current, "SwapEffectUpgradeEnable", "1");
+            set_all(id, &[(Hive::Hkcu, GPU_PREFS, DX_GLOBAL, RegValue::Sz(merged))])
+        },
+    },
+    Tweak {
+        id: "visual-effects-performance",
+        category: Category::System,
+        title: "Efeitos visuais para desempenho",
+        description: "Define os efeitos visuais do Windows para \"Ajustar para obter o melhor desempenho\" (animações e sombras desligadas). \
+                      Torna o ambiente de trabalho mais leve; não muda o FPS dentro dos jogos. Tem efeito ao terminar sessão.",
+        risk: Risk::Low,
+        requires_reboot: true,
+        needs: Needs::Nothing,
+        apply: |id| {
+            set_all(id, &[(
+                Hive::Hkcu,
+                r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
+                "VisualFXSetting",
+                d(2),
+            )])
+        },
+    },
+    Tweak {
+        id: "transparency-off",
+        category: Category::System,
+        title: "Desligar efeitos de transparência",
+        description: "Desliga a transparência da barra de tarefas e menus. Ganho pequeno, sobretudo em GPUs integradas.",
+        risk: Risk::Low,
+        requires_reboot: false,
+        needs: Needs::Nothing,
+        apply: |id| set_all(id, &[(Hive::Hkcu, PERSONALIZE, "EnableTransparency", d(0))]),
+    },
+    Tweak {
+        id: "background-apps-off",
+        category: Category::System,
+        title: "Bloquear apps da Store em segundo plano",
+        description: "Impede as aplicações da Microsoft Store de correrem em segundo plano. \
+                      Notificações dessas apps (ex.: Mail) podem deixar de chegar com a app fechada.",
+        risk: Risk::Low,
+        requires_reboot: false,
+        needs: Needs::Nothing,
+        apply: |id| {
+            set_all(id, &[(
+                Hive::Hkcu,
+                r"Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications",
+                "GlobalUserDisabled",
+                d(1),
+            )])
+        },
+    },
+    Tweak {
+        id: "mpo-off",
+        category: Category::Gpu,
+        title: "Desligar Multiplane Overlay (MPO)",
+        description: "Correção para flicker ou stutter em algumas configurações com vários monitores e GPU NVIDIA. \
+                      Só aplicar se tiveres esse problema; versões recentes do Windows podem ignorar esta definição.",
+        risk: Risk::Medium,
+        requires_reboot: true,
+        needs: Needs::Nothing,
+        apply: |id| set_all(id, &[(Hive::Hklm, r"SOFTWARE\Microsoft\Windows\Dwm", "OverlayTestMode", d(5))]),
+    },
 ];
 
 fn find(id: &str) -> Result<&'static Tweak> {
@@ -349,4 +465,43 @@ pub fn revert(id: &str) -> Result<TweakInfo> {
     let t = find(id)?;
     journal::revert(t.id)?;
     Ok(info(t))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dx_merge_adds_to_empty() {
+        assert_eq!(merge_dx_setting("", "SwapEffectUpgradeEnable", "1"), "SwapEffectUpgradeEnable=1;");
+    }
+
+    #[test]
+    fn dx_merge_keeps_other_entries() {
+        assert_eq!(
+            merge_dx_setting("VRROptimizeEnable=0;", "SwapEffectUpgradeEnable", "1"),
+            "VRROptimizeEnable=0;SwapEffectUpgradeEnable=1;"
+        );
+    }
+
+    #[test]
+    fn dx_merge_replaces_existing_value() {
+        assert_eq!(
+            merge_dx_setting("SwapEffectUpgradeEnable=0;VRROptimizeEnable=1", "SwapEffectUpgradeEnable", "1"),
+            "SwapEffectUpgradeEnable=1;VRROptimizeEnable=1;"
+        );
+        assert_eq!(
+            merge_dx_setting("swapeffectupgradeenable=0;;SwapEffectUpgradeEnable=0;", "SwapEffectUpgradeEnable", "1"),
+            "SwapEffectUpgradeEnable=1;"
+        );
+    }
+
+    #[test]
+    fn tweak_ids_unique() {
+        let mut ids: Vec<_> = TWEAKS.iter().map(|t| t.id).collect();
+        let n = ids.len();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), n);
+    }
 }
