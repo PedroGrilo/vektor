@@ -1,0 +1,31 @@
+//! Executes a single journal [`Undo`] step by delegating to the owning module.
+
+use crate::error::Result;
+use crate::journal::Undo;
+use crate::{gpu, ryzen, win};
+
+pub fn run(step: &Undo) -> Result<()> {
+    match step {
+        Undo::RegistryValue { hive, key, name, previous } => match previous {
+            Some(v) => win::registry::write(*hive, key, name, v),
+            None => win::registry::delete(*hive, key, name),
+        },
+        Undo::PowerPlan { previous_guid, created_guid } => {
+            win::power::restore(previous_guid, created_guid.as_deref())
+        }
+        Undo::Service { name, previous_start, was_running } => {
+            win::services::restore(name, *previous_start, *was_running)
+        }
+        Undo::File { path, backup } => win::files::restore(path, backup.as_deref()),
+        Undo::FileReadonly { path, was_readonly } => win::files::set_readonly(path, *was_readonly),
+        Undo::NvidiaSetting { profile, setting_id, previous } => {
+            gpu::nvidia::restore_setting(profile, *setting_id, *previous)
+        }
+        Undo::NvidiaProfileCreated { profile } => gpu::nvidia::delete_profile(profile),
+        Undo::Vibrance { display, previous } => gpu::restore_vibrance(display, *previous),
+        Undo::DisplayMode { device, width, height, refresh } => {
+            gpu::display::set_mode(device, *width, *height, *refresh).map(|_| ())
+        }
+        Undo::CurveOptimizer { previous } => ryzen::set_all_core(*previous),
+    }
+}
