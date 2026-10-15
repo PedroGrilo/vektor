@@ -1,122 +1,110 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Crosshair, Gauge as GaugeIcon, History, Minus, MonitorCog, Square, SlidersHorizontal, X } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { inTauri } from "./api";
+import { backend } from "./mock";
+import { ToastProvider, usePoll } from "./ui";
+import Dashboard from "./pages/Dashboard";
+import Optimize from "./pages/Optimize";
+import Cs2 from "./pages/Cs2";
+import Gpu from "./pages/Gpu";
+import Restore from "./pages/Restore";
 
-function App() {
-  const [count, setCount] = useState(0)
+export type PageId = "dashboard" | "optimize" | "cs2" | "gpu" | "restore";
 
+const NAV: { id: PageId; label: string; icon: typeof GaugeIcon; section?: string }[] = [
+  { id: "dashboard", label: "Painel", icon: GaugeIcon, section: "Sistema" },
+  { id: "optimize", label: "Otimizações", icon: SlidersHorizontal },
+  { id: "gpu", label: "GPU & Ecrã", icon: MonitorCog },
+  { id: "cs2", label: "Counter-Strike 2", icon: Crosshair, section: "Jogo" },
+  { id: "restore", label: "Restaurar", icon: History, section: "Segurança" },
+];
+
+function TitleBar() {
+  const win = inTauri ? getCurrentWindow() : null;
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    <header className="titlebar" data-tauri-drag-region>
+      <div className="brand" data-tauri-drag-region>
+        <Logo />
+        VEKTOR <small>v0.1.0</small>
+      </div>
+      <div className="controls">
+        <button aria-label="Minimizar" onClick={() => win?.minimize()}><Minus size={15} /></button>
+        <button aria-label="Maximizar" onClick={() => win?.toggleMaximize()}><Square size={12} /></button>
+        <button aria-label="Fechar" className="close" onClick={() => win?.close()}><X size={16} /></button>
+      </div>
+    </header>
+  );
 }
 
-export default App
+export function Logo({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <defs>
+        <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#67e8f9" />
+          <stop offset="1" stopColor="#a78bfa" />
+        </linearGradient>
+      </defs>
+      <path d="M3 4h4.2L12 15.5 16.8 4H21l-7.4 16h-3.2L3 4Z" fill="url(#lg)" />
+      <path d="M9.5 4h5L12 10 9.5 4Z" fill="#05070d" opacity=".55" />
+    </svg>
+  );
+}
+
+function SidebarStatus() {
+  const stats = usePoll(() => backend.liveStats(), 2500);
+  return (
+    <div className="status-card">
+      <div className="row between" style={{ marginBottom: 6 }}>
+        <span className="label">Estado</span>
+        {stats?.cs2Running ? <span className="chip on"><span className="dot" />CS2 ativo</span> : <span className="chip">em espera</span>}
+      </div>
+      <div>CPU <b>{stats ? `${stats.cpuUsage.toFixed(0)}%` : "—"}</b> · RAM <b>{stats ? `${stats.ramUsedGb.toFixed(1)} GB` : "—"}</b></div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [page, setPage] = useState<PageId>("dashboard");
+  return (
+    <ToastProvider>
+      <div className="backdrop">
+        <div className="grid" />
+        <div className="orb a" />
+        <div className="orb b" />
+        <div className="scan" />
+      </div>
+      <div className="shell">
+        <TitleBar />
+        <div className="body">
+          <nav className="sidebar">
+            {NAV.map((n) => (
+              <div key={n.id}>
+                {n.section && <div className="section">{n.section}</div>}
+                <button className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(n.id)}>
+                  <n.icon size={18} />
+                  {n.label}
+                </button>
+              </div>
+            ))}
+            <div className="spacer" />
+            <SidebarStatus />
+          </nav>
+          <AnimatePresence mode="wait">
+            <motion.main key={page} className="page"
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}>
+              {page === "dashboard" && <Dashboard go={setPage} />}
+              {page === "optimize" && <Optimize />}
+              {page === "cs2" && <Cs2 />}
+              {page === "gpu" && <Gpu />}
+              {page === "restore" && <Restore />}
+            </motion.main>
+          </AnimatePresence>
+        </div>
+      </div>
+    </ToastProvider>
+  );
+}
