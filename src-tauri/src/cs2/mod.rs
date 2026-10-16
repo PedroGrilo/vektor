@@ -4,6 +4,7 @@
 
 pub mod benchmark;
 pub mod config;
+pub mod history;
 pub mod launch;
 pub mod presets;
 pub mod vdf;

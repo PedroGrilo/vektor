@@ -1,10 +1,14 @@
+mod appsettings;
 mod cleanup;
 mod commands;
 mod cs2;
+mod diagnostics;
+mod display;
 mod error;
 mod journal;
 mod memory;
 mod nvidia;
+mod session;
 mod system;
 mod tweaks;
 mod undo;
@@ -51,6 +55,25 @@ pub fn run() {
             commands::nvidia_status,
             commands::nvidia_apply_global,
             commands::nvidia_revert_global,
+            commands::nvidia_apply_cs2,
+            commands::nvidia_revert_cs2,
+            // game session
+            commands::session_status,
+            commands::session_set_config,
+            commands::session_topology,
+            commands::session_stop,
+            commands::display_list,
+            commands::vibrance_info,
+            commands::vibrance_preview,
+            commands::vibrance_reset,
+            // benchmarks
+            commands::bench_history,
+            commands::bench_delete,
+            commands::bench_set_note,
+            // app
+            commands::app_settings,
+            commands::app_set_settings,
+            commands::export_diagnostics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vektor");

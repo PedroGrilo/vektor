@@ -2,7 +2,7 @@
 
 use crate::error::Result;
 use crate::journal::Undo;
-use crate::{memory, nvidia, win};
+use crate::{display, memory, nvidia, win};
 
 pub fn run(step: &Undo) -> Result<()> {
     match step {
@@ -20,5 +20,9 @@ pub fn run(step: &Undo) -> Result<()> {
         Undo::FileReadonly { path, was_readonly } => win::files::set_readonly(path, *was_readonly),
         Undo::NvidiaBaseProfile { snapshot } => nvidia::restore_base_profile(snapshot),
         Undo::MemoryService => memory::uninstall_service_quiet(),
+        Undo::DisplayMode { device, width, height, refresh } => {
+            display::modes::set_mode(device, *width, *height, *refresh).map(|_| ())
+        }
+        Undo::Vibrance { device, previous } => display::vibrance::set_level(device, *previous),
     }
 }

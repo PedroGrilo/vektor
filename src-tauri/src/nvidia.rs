@@ -1,5 +1,6 @@
-//! NVIDIA global ("Base Profile") optimisation through NVIDIA Profile Inspector
+//! NVIDIA driver profile optimisation through NVIDIA Profile Inspector
 //! (MIT, github.com/Orbmu2k/nvidiaProfileInspector), bundled under `resources/npi/`.
+//! Two targets: the global profile (all games) and the predefined CS2 profile.
 //!
 //! Flow:
 //! 1. `-exportCustomized` → snapshot of the current global profile (for rollback).
@@ -7,8 +8,10 @@
 //!    the current global profile (empty ProfileName = current global profile).
 //! 3. Export again and check our setting IDs are present (silent import hides errors).
 //!
-//! Revert re-imports the snapshot with `-replaceImport`, which resets the global
-//! profile and writes back exactly the values it had before.
+//! Revert re-imports the snapshot with `-replaceImport`, which resets the profile
+//! and writes back exactly the values it had before. Replace mode also deletes
+//! applications missing from the import, so snapshots always carry the profile's
+//! full application list (merge mode, used to apply, only adds).
 //!
 //! Setting IDs/values come from NVIDIA's public NvApiDriverSettings.h.
 
@@ -20,7 +23,33 @@ use tauri::Manager;
 use crate::error::{Error, Result};
 use crate::journal::{self, Undo};
 
-const TWEAK_ID: &str = "nvidia-global";
+/// One profile Vektor can optimise.
+struct Target {
+    tweak_id: &'static str,
+    /// Name used in our .nip ("" = current global profile).
+    import_name: &'static str,
+    /// Name the profile has in NPI exports.
+    export_name: &'static str,
+    /// Executables added (merge) so a wrong profile name fails instead of creating an orphan profile.
+    executables: &'static [&'static str],
+    file_stem: &'static str,
+}
+
+const GLOBAL: Target = Target {
+    tweak_id: "nvidia-global",
+    import_name: "",
+    export_name: "Base Profile",
+    executables: &[],
+    file_stem: "global",
+};
+
+const CS2: Target = Target {
+    tweak_id: "nvidia-cs2",
+    import_name: "Counter-Strike 2",
+    export_name: "Counter-Strike 2",
+    executables: &["cs2.exe"],
+    file_stem: "cs2",
+};
 const NPI_EXE: &str = "nvidiaProfileInspector.exe";
 const NPI_VERSION: &str = "3.0.2.1";
 
@@ -34,6 +63,8 @@ const PS_TEXFILTER_DISABLE_TRILIN_SLOPE_ID: u32 = 0x002E_CAF2;
 const PS_SHADERDISKCACHE_ID: u32 = 0x0019_8FFF;
 const PS_SHADERDISKCACHE_MAX_SIZE_ID: u32 = 0x00AC_8497;
 const PS_SHADERDISKCACHE_MAX_SIZE_UNLIMITED: u32 = 0xFFFF_FFFF;
+const VSYNCMODE_ID: u32 = 0x00A8_79CF;
+const VSYNCMODE_FORCEOFF: u32 = 0x0841_6747;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,12 +75,22 @@ pub struct NvGlobalOptions {
     pub unlimited_shader_cache: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NvCs2Options {
+    pub low_latency: bool,
+    pub max_performance_power: bool,
+    pub vsync_off: bool,
+    pub texture_high_performance: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NvidiaStatus {
     pub nvidia_gpu: bool,
     pub inspector_available: bool,
     pub applied: bool,
+    pub cs2_applied: bool,
     pub inspector_version: Option<String>,
 }
 
@@ -79,13 +120,27 @@ fn settings_for(o: &NvGlobalOptions) -> Vec<Setting> {
     v
 }
 
+fn settings_for_cs2(o: &NvCs2Options) -> Vec<Setting> {
+    let base = NvGlobalOptions {
+        max_performance_power: o.max_performance_power,
+        low_latency: o.low_latency,
+        texture_high_performance: o.texture_high_performance,
+        unlimited_shader_cache: false,
+    };
+    let mut v = settings_for(&base);
+    if o.vsync_off {
+        v.push(Setting { id: VSYNCMODE_ID, value: VSYNCMODE_FORCEOFF, name: "Vertical Sync" });
+    }
+    v
+}
+
 // ---------- .nip (XmlSerializer of List<Profile>) ----------
 
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
-fn render_global_nip(settings: &[Setting]) -> String {
+fn render_nip(target: &Target, settings: &[Setting]) -> String {
     let mut body = String::new();
     for s in settings {
         body.push_str(&format!(
@@ -94,8 +149,22 @@ fn render_global_nip(settings: &[Setting]) -> String {
         ));
     }
     wrap_profiles(&format!(
-        "  <Profile>\r\n    <ProfileName />\r\n    <Executeables />\r\n    <Settings>\r\n{body}    </Settings>\r\n  </Profile>\r\n"
+        "  <Profile>\r\n    {}\r\n    {}\r\n    <Settings>\r\n{body}    </Settings>\r\n  </Profile>\r\n",
+        profile_name_xml(target.import_name),
+        executables_xml(target.executables),
     ))
+}
+
+fn profile_name_xml(name: &str) -> String {
+    if name.is_empty() { "<ProfileName />".into() } else { format!("<ProfileName>{}</ProfileName>", xml_escape(name)) }
+}
+
+fn executables_xml(exes: &[&str]) -> String {
+    if exes.is_empty() {
+        return "<Executeables />".into();
+    }
+    let items: String = exes.iter().map(|e| format!("<string>{}</string>", xml_escape(e))).collect();
+    format!("<Executeables>{items}</Executeables>")
 }
 
 fn wrap_profiles(profiles: &str) -> String {
@@ -121,30 +190,36 @@ fn decode_nip(bytes: &[u8]) -> String {
     }
 }
 
-/// Extract the `<Profile>` block of the global profile from an export, retargeted
-/// to the current global profile (empty ProfileName).
-fn extract_global_profile(xml: &str, global_name: &str) -> Option<String> {
+/// Extract the `<Profile>` block named `export_name` (case-insensitive) from an
+/// export, renamed to `import_name` so it can be re-imported.
+fn extract_profile(xml: &str, export_name: &str, import_name: &str) -> Option<String> {
     let mut rest = xml;
     while let Some(start) = rest.find("<Profile>") {
         let after = &rest[start..];
         let end = after.find("</Profile>")? + "</Profile>".len();
         let block = &after[..end];
-        let wanted = format!("<ProfileName>{}</ProfileName>", xml_escape(global_name));
-        if block.contains(&wanted) {
-            return Some(format!("  {}\r\n", block.replacen(&wanted, "<ProfileName />", 1)));
+        if let (Some(a), Some(b)) = (block.find("<ProfileName>"), block.find("</ProfileName>")) {
+            let name = &block[a + "<ProfileName>".len()..b];
+            if name.eq_ignore_ascii_case(&xml_escape(export_name)) {
+                let full = &block[a..b + "</ProfileName>".len()];
+                return Some(format!("  {}\r\n", block.replacen(full, &profile_name_xml(import_name), 1)));
+            }
         }
         rest = &after[end..];
     }
     None
 }
 
-/// Snapshot used when the global profile had no customisations: replace-importing
-/// it resets the global profile to driver defaults.
-fn empty_global_profile() -> String {
-    "  <Profile>\r\n    <ProfileName />\r\n    <Executeables />\r\n    <Settings />\r\n  </Profile>\r\n".to_string()
+/// Same profile with its settings removed (applications kept): replace-importing
+/// it resets the profile to driver defaults without touching its executables.
+fn strip_settings(block: &str) -> String {
+    match (block.find("<Settings>"), block.find("</Settings>")) {
+        (Some(a), Some(b)) => format!("{}<Settings />{}", &block[..a], &block[b + "</Settings>".len()..]),
+        _ => block.to_string(),
+    }
 }
 
-fn global_contains(block: &str, settings: &[Setting]) -> bool {
+fn profile_contains(block: &str, settings: &[Setting]) -> bool {
     settings.iter().all(|s| {
         let id = format!("<SettingID>{}</SettingID>", s.id);
         let val = format!("<SettingValue>{}</SettingValue>", s.value);
@@ -221,51 +296,80 @@ pub fn status(app: &tauri::AppHandle) -> Result<NvidiaStatus> {
     Ok(NvidiaStatus {
         nvidia_gpu: has_nvidia_gpu(),
         inspector_available: available,
-        applied: journal::is_applied(TWEAK_ID),
+        applied: journal::is_applied(GLOBAL.tweak_id),
+        cs2_applied: journal::is_applied(CS2.tweak_id),
         inspector_version: available.then(|| NPI_VERSION.to_string()),
     })
 }
 
 pub fn apply_global(app: &tauri::AppHandle, options: &NvGlobalOptions) -> Result<NvidiaStatus> {
+    apply(app, &GLOBAL, &settings_for(options))
+}
+
+pub fn revert_global(app: &tauri::AppHandle) -> Result<NvidiaStatus> {
+    journal::revert(GLOBAL.tweak_id)?;
+    status(app)
+}
+
+pub fn apply_cs2(app: &tauri::AppHandle, options: &NvCs2Options) -> Result<NvidiaStatus> {
+    apply(app, &CS2, &settings_for_cs2(options))
+}
+
+pub fn revert_cs2(app: &tauri::AppHandle) -> Result<NvidiaStatus> {
+    journal::revert(CS2.tweak_id)?;
+    status(app)
+}
+
+fn apply(app: &tauri::AppHandle, target: &Target, settings: &[Setting]) -> Result<NvidiaStatus> {
     if !has_nvidia_gpu() {
         return Err(Error::Unavailable("não foi encontrada uma placa gráfica NVIDIA".into()));
     }
     let dir = npi_dir(app).ok_or_else(|| Error::Unavailable("NVIDIA Profile Inspector não incluído nesta instalação".into()))?;
-    let settings = settings_for(options);
     if settings.is_empty() {
         return Err(Error::InvalidInput("escolhe pelo menos uma opção".into()));
     }
     std::fs::create_dir_all(work_dir())?;
+    let snapshot = work_dir().join(format!("{}-before-vektor.nip", target.file_stem));
+    let first_time = !journal::is_applied(target.tweak_id);
 
     // Snapshot only on first application, so revert always returns to the original state.
-    if !journal::is_applied(TWEAK_ID) {
-        let export = export_customized(&dir)?;
-        let block = extract_global_profile(&export, "Base Profile").unwrap_or_else(empty_global_profile);
-        let snapshot = work_dir().join("global-before-vektor.nip");
-        std::fs::write(&snapshot, format!("\u{feff}{}", wrap_profiles(&block)))?;
-        journal::record(TWEAK_ID, Undo::NvidiaBaseProfile { snapshot })?;
+    // If the profile had no customisations it is not in the export yet; the snapshot
+    // is then taken from the post-apply export with settings stripped.
+    let mut need_snapshot = false;
+    if first_time {
+        let before = export_customized(&dir)?;
+        match extract_profile(&before, target.export_name, target.import_name) {
+            Some(block) => save_snapshot(target, &snapshot, &block)?,
+            None => need_snapshot = true,
+        }
     }
 
-    let nip = work_dir().join("vektor-global.nip");
-    std::fs::write(&nip, format!("\u{feff}{}", render_global_nip(&settings)))?;
+    let nip = work_dir().join(format!("vektor-{}.nip", target.file_stem));
+    std::fs::write(&nip, format!("\u{feff}{}", render_nip(target, settings)))?;
     import(&dir, &nip, "-mergeImport")?;
 
     let after = export_customized(&dir)?;
-    let ok = extract_global_profile(&after, "Base Profile").is_some_and(|b| global_contains(&b, &settings));
-    if !ok {
-        return Err(Error::msg(
-            "O perfil foi importado mas as definições não aparecem no perfil global. Verifica no Profile Inspector.",
-        ));
+    let block = extract_profile(&after, target.export_name, target.import_name);
+    if need_snapshot {
+        if let Some(b) = &block {
+            save_snapshot(target, &snapshot, &strip_settings(b))?;
+        }
+    }
+    if !block.is_some_and(|b| profile_contains(&b, settings)) {
+        return Err(Error::msg(format!(
+            "As definições não aparecem no perfil \"{}\" depois da importação. Verifica no Profile Inspector.",
+            target.export_name
+        )));
     }
     status(app)
 }
 
-pub fn revert_global(app: &tauri::AppHandle) -> Result<NvidiaStatus> {
-    journal::revert(TWEAK_ID)?;
-    status(app)
+fn save_snapshot(target: &Target, path: &Path, block: &str) -> Result<()> {
+    std::fs::write(path, format!("\u{feff}{}", wrap_profiles(block)))?;
+    journal::record(target.tweak_id, Undo::NvidiaBaseProfile { snapshot: path.to_path_buf() })
 }
 
-/// Undo step: replace-import the saved global profile snapshot.
+/// Undo step: replace-import a saved profile snapshot.
 pub fn restore_base_profile(snapshot: &Path) -> Result<()> {
     // The undo runner has no AppHandle; NPI lives next to the executable in installs.
     let dir = std::env::current_exe()?
@@ -287,7 +391,7 @@ mod tests {
 
     #[test]
     fn extracts_and_retargets_global() {
-        let b = extract_global_profile(EXPORT, "Base Profile").unwrap();
+        let b = extract_profile(EXPORT, "Base Profile", "").unwrap();
         assert!(b.contains("<ProfileName />"));
         assert!(b.contains("<SettingID>8102046</SettingID>"));
         assert!(!b.contains("Counter-strike"));
@@ -295,7 +399,26 @@ mod tests {
 
     #[test]
     fn missing_global_is_none() {
-        assert!(extract_global_profile("<ArrayOfProfile></ArrayOfProfile>", "Base Profile").is_none());
+        assert!(extract_profile("<ArrayOfProfile></ArrayOfProfile>", "Base Profile", "").is_none());
+    }
+
+    #[test]
+    fn cs2_profile_keeps_name_and_apps() {
+        let b = extract_profile(EXPORT, "counter-strike 2", "Counter-Strike 2").unwrap();
+        assert!(b.contains("<ProfileName>Counter-Strike 2</ProfileName>"));
+        let o = NvCs2Options { low_latency: true, max_performance_power: false, vsync_off: true, texture_high_performance: false };
+        let nip = render_nip(&CS2, &settings_for_cs2(&o));
+        assert!(nip.contains("<Executeables><string>cs2.exe</string></Executeables>"));
+        assert!(nip.contains(&format!("<SettingValue>{}</SettingValue>", VSYNCMODE_FORCEOFF)));
+    }
+
+    #[test]
+    fn strip_settings_keeps_apps() {
+        let block = "<Profile><ProfileName>X</ProfileName><Executeables><string>a.exe</string></Executeables><Settings><ProfileSetting /></Settings></Profile>";
+        let out = strip_settings(block);
+        assert!(out.contains("<string>a.exe</string>"));
+        assert!(out.contains("<Settings />"));
+        assert!(!out.contains("<ProfileSetting"));
     }
 
     #[test]
@@ -312,10 +435,10 @@ mod tests {
         let o = NvGlobalOptions { max_performance_power: true, low_latency: true, texture_high_performance: true, unlimited_shader_cache: true };
         let s = settings_for(&o);
         assert_eq!(s.len(), 7);
-        let nip = render_global_nip(&s);
+        let nip = render_nip(&GLOBAL, &s);
         assert!(nip.contains("<SettingID>8102046</SettingID>")); // PRERENDERLIMIT 0x007BA09E
         assert!(nip.contains("<SettingValue>4294967295</SettingValue>"));
-        assert!(global_contains(&nip, &s));
-        assert!(!global_contains(EXPORT, &s));
+        assert!(profile_contains(&nip, &s));
+        assert!(!profile_contains(EXPORT, &s));
     }
 }

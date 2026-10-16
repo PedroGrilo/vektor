@@ -44,6 +44,10 @@ pub enum Undo {
     NvidiaBaseProfile { snapshot: PathBuf },
     /// Stop and delete the VektorMemory service.
     MemoryService,
+    /// Restore a display mode changed for the game session.
+    DisplayMode { device: String, width: u32, height: u32, refresh: u32 },
+    /// Restore digital vibrance (0..100 scale) on a display.
+    Vibrance { device: String, previous: i32 },
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]

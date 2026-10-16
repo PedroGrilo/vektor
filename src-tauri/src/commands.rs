@@ -2,7 +2,7 @@
 //! Blocking work runs on the blocking thread pool so the UI never stalls.
 
 use crate::error::{Error, Result};
-use crate::{cleanup, cs2, journal, memory, nvidia, system, tweaks};
+use crate::{appsettings, cleanup, cs2, diagnostics, display, journal, memory, nvidia, session, system, tweaks};
 
 async fn blocking<T, F>(f: F) -> Result<T>
 where
@@ -152,4 +152,90 @@ pub async fn nvidia_apply_global(app: tauri::AppHandle, options: nvidia::NvGloba
 #[tauri::command]
 pub async fn nvidia_revert_global(app: tauri::AppHandle) -> Result<nvidia::NvidiaStatus> {
     blocking(move || nvidia::revert_global(&app)).await
+}
+
+#[tauri::command]
+pub async fn nvidia_apply_cs2(app: tauri::AppHandle, options: nvidia::NvCs2Options) -> Result<nvidia::NvidiaStatus> {
+    blocking(move || nvidia::apply_cs2(&app, &options)).await
+}
+
+#[tauri::command]
+pub async fn nvidia_revert_cs2(app: tauri::AppHandle) -> Result<nvidia::NvidiaStatus> {
+    blocking(move || nvidia::revert_cs2(&app)).await
+}
+
+// ---------- game session ----------
+
+#[tauri::command]
+pub async fn session_status() -> Result<session::SessionStatus> {
+    blocking(session::status).await
+}
+
+#[tauri::command]
+pub async fn session_set_config(config: session::SessionConfig) -> Result<session::SessionStatus> {
+    blocking(move || session::set_config(config)).await
+}
+
+#[tauri::command]
+pub async fn session_topology() -> Result<session::affinity::CpuTopology> {
+    blocking(session::affinity::topology).await
+}
+
+#[tauri::command]
+pub async fn session_stop() -> Result<session::SessionStatus> {
+    blocking(session::stop).await
+}
+
+#[tauri::command]
+pub async fn display_list() -> Result<Vec<display::DisplayInfo>> {
+    blocking(display::modes::list).await
+}
+
+#[tauri::command]
+pub async fn vibrance_info() -> Result<display::vibrance::VibranceInfo> {
+    blocking(display::vibrance::info).await
+}
+
+#[tauri::command]
+pub async fn vibrance_preview(level: i32) -> Result<display::vibrance::VibranceInfo> {
+    blocking(move || display::vibrance::preview(level)).await
+}
+
+#[tauri::command]
+pub async fn vibrance_reset() -> Result<display::vibrance::VibranceInfo> {
+    blocking(display::vibrance::reset).await
+}
+
+// ---------- benchmarks ----------
+
+#[tauri::command]
+pub async fn bench_history() -> Result<Vec<cs2::history::BenchRecord>> {
+    blocking(cs2::history::list).await
+}
+
+#[tauri::command]
+pub async fn bench_delete(id: String) -> Result<Vec<cs2::history::BenchRecord>> {
+    blocking(move || cs2::history::delete(&id)).await
+}
+
+#[tauri::command]
+pub async fn bench_set_note(id: String, note: String) -> Result<Vec<cs2::history::BenchRecord>> {
+    blocking(move || cs2::history::set_note(&id, &note)).await
+}
+
+// ---------- app ----------
+
+#[tauri::command]
+pub async fn app_settings() -> Result<appsettings::AppSettings> {
+    blocking(appsettings::load_checked).await
+}
+
+#[tauri::command]
+pub async fn app_set_settings(settings: appsettings::AppSettings) -> Result<appsettings::AppSettings> {
+    blocking(move || appsettings::save(settings)).await
+}
+
+#[tauri::command]
+pub async fn export_diagnostics() -> Result<String> {
+    blocking(diagnostics::export).await
 }

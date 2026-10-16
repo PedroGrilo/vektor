@@ -79,6 +79,9 @@ export interface Cs2Install {
   users: SteamUser[];
   /** current launch options for app 730 of the most recent user */
   launchOptions: string | null;
+  /** Steam marked CS2 as needing an update (appmanifest StateFlags) */
+  updateRequired: boolean;
+  buildId: string | null;
 }
 export interface VideoSettings {
   width: number | null;
@@ -159,11 +162,100 @@ export interface NvGlobalOptions {
   /** Shader cache on with unlimited size */
   unlimitedShaderCache: boolean;
 }
+export interface NvCs2Options {
+  lowLatency: boolean;
+  maxPerformancePower: boolean;
+  /** force V-Sync off for cs2.exe */
+  vsyncOff: boolean;
+  textureHighPerformance: boolean;
+}
 export interface NvidiaStatus {
   nvidiaGpu: boolean;
   inspectorAvailable: boolean;
   applied: boolean;
+  /** CS2-specific profile applied */
+  cs2Applied: boolean;
   inspectorVersion: string | null;
+}
+
+// ---------- game session ("modo jogo": boost while CS2 runs) ----------
+export interface DisplayMode {
+  width: number;
+  height: number;
+  refresh: number;
+}
+export interface DisplayInfo {
+  /** e.g. "\\.\DISPLAY1" */
+  device: string;
+  name: string;
+  primary: boolean;
+  current: DisplayMode;
+  modes: DisplayMode[];
+}
+export interface SessionConfig {
+  /** apply the session automatically whenever cs2.exe starts */
+  enabled: boolean;
+  /** process names (from the background-apps allowlist) closed during the game */
+  closeApps: string[];
+  /** reopen closed apps when the game exits */
+  reopenApps: boolean;
+  affinity: "off" | "auto" | "custom";
+  /** hex mask like "0xFF" when affinity === "custom" */
+  affinityMask: string | null;
+  /** resolution for the primary display while playing; null = unchanged */
+  resolution: DisplayMode | null;
+  /** digital vibrance 0..100 while CS2 has focus; null = off (50 = driver default) */
+  vibrance: number | null;
+}
+export interface CcdGroup {
+  id: number;
+  l3Mb: number;
+  mask: string;
+  logicalCount: number;
+}
+export interface CpuTopology {
+  logicalCount: number;
+  groups: CcdGroup[];
+  recommendedMask: string;
+  /** PT-PT explanation, e.g. "CCD com 3D V-Cache" */
+  recommendedLabel: string;
+}
+export interface SessionStatus {
+  active: boolean;
+  /** ISO timestamp */
+  since: string | null;
+  cs2Pid: number | null;
+  /** PT-PT list of what the current session did */
+  actions: string[];
+  config: SessionConfig;
+}
+export interface VibranceInfo {
+  supported: boolean;
+  vendor: "nvidia" | "amd" | "other";
+  /** current level 0..100 on the primary display */
+  current: number | null;
+}
+
+// ---------- benchmarks ----------
+export interface BenchRecord {
+  id: string;
+  /** ISO timestamp */
+  date: string;
+  avgFps: number;
+  p1Fps: number;
+  /** tweaks applied at the time */
+  appliedTweaks: number;
+  sessionActive: boolean;
+  note: string | null;
+}
+
+// ---------- app ----------
+export interface AppSettings {
+  /** start with Windows (scheduled task, elevated, no UAC prompt) */
+  autostart: boolean;
+  startMinimized: boolean;
+  /** closing the window keeps Vektor in the tray (needed for the game session watcher) */
+  closeToTray: boolean;
 }
 
 export const api = {
@@ -198,6 +290,25 @@ export const api = {
   nvidiaStatus: () => invoke<NvidiaStatus>("nvidia_status"),
   nvidiaApplyGlobal: (options: NvGlobalOptions) => invoke<NvidiaStatus>("nvidia_apply_global", { options }),
   nvidiaRevertGlobal: () => invoke<NvidiaStatus>("nvidia_revert_global"),
+  nvidiaApplyCs2: (options: NvCs2Options) => invoke<NvidiaStatus>("nvidia_apply_cs2", { options }),
+  nvidiaRevertCs2: () => invoke<NvidiaStatus>("nvidia_revert_cs2"),
+
+  sessionStatus: () => invoke<SessionStatus>("session_status"),
+  sessionSetConfig: (config: SessionConfig) => invoke<SessionStatus>("session_set_config", { config }),
+  sessionTopology: () => invoke<CpuTopology>("session_topology"),
+  sessionStop: () => invoke<SessionStatus>("session_stop"),
+  displayList: () => invoke<DisplayInfo[]>("display_list"),
+  vibranceInfo: () => invoke<VibranceInfo>("vibrance_info"),
+  vibrancePreview: (level: number) => invoke<VibranceInfo>("vibrance_preview", { level }),
+  vibranceReset: () => invoke<VibranceInfo>("vibrance_reset"),
+
+  benchHistory: () => invoke<BenchRecord[]>("bench_history"),
+  benchDelete: (id: string) => invoke<BenchRecord[]>("bench_delete", { id }),
+  benchSetNote: (id: string, note: string) => invoke<BenchRecord[]>("bench_set_note", { id, note }),
+
+  appSettings: () => invoke<AppSettings>("app_settings"),
+  appSetSettings: (settings: AppSettings) => invoke<AppSettings>("app_set_settings", { settings }),
+  exportDiagnostics: () => invoke<string>("export_diagnostics"),
 };
 
 /** True when running inside Tauri (false in a plain browser preview). */
