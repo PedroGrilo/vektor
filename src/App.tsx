@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Crosshair, Gauge as GaugeIcon, History, MemoryStick, Minus, MonitorCog, Square, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Crosshair, Rocket, Settings as SettingsIcon, Gauge as GaugeIcon, History, MemoryStick, Minus, MonitorCog, Square, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { inTauri } from "./api";
 import { backend } from "./mock";
@@ -12,8 +12,10 @@ import Restore from "./pages/Restore";
 import Cleanup from "./pages/Cleanup";
 import Memory from "./pages/Memory";
 import Nvidia from "./pages/Nvidia";
+import GameMode from "./pages/GameMode";
+import SettingsPage from "./pages/Settings";
 
-export type PageId = "dashboard" | "optimize" | "cleanup" | "memory" | "nvidia" | "cs2" | "restore";
+export type PageId = "dashboard" | "optimize" | "cleanup" | "memory" | "nvidia" | "game" | "cs2" | "restore" | "settings";
 
 const NAV: { id: PageId; label: string; icon: typeof GaugeIcon; section?: string }[] = [
   { id: "dashboard", label: "Painel", icon: GaugeIcon, section: "Sistema" },
@@ -21,8 +23,10 @@ const NAV: { id: PageId; label: string; icon: typeof GaugeIcon; section?: string
   { id: "cleanup", label: "Limpeza", icon: Trash2 },
   { id: "memory", label: "Memória", icon: MemoryStick },
   { id: "nvidia", label: "NVIDIA", icon: MonitorCog },
-  { id: "cs2", label: "Counter-Strike 2", icon: Crosshair, section: "Jogo" },
+  { id: "game", label: "Modo Jogo", icon: Rocket, section: "Jogo" },
+  { id: "cs2", label: "Counter-Strike 2", icon: Crosshair },
   { id: "restore", label: "Restaurar", icon: History, section: "Segurança" },
+  { id: "settings", label: "Definições", icon: SettingsIcon },
 ];
 
 function TitleBar() {
@@ -31,7 +35,7 @@ function TitleBar() {
     <header className="titlebar" data-tauri-drag-region>
       <div className="brand" data-tauri-drag-region>
         <Logo />
-        VEKTOR <small>v0.1.0</small>
+        VEKTOR <small>v1.0.0</small>
       </div>
       <div className="controls">
         <button aria-label="Minimizar" onClick={() => win?.minimize()}><Minus size={15} /></button>
@@ -105,7 +109,9 @@ export default function App() {
               {page === "cleanup" && <Cleanup />}
               {page === "memory" && <Memory />}
               {page === "nvidia" && <Nvidia />}
+              {page === "game" && <GameMode />}
               {page === "cs2" && <Cs2 />}
+              {page === "settings" && <SettingsPage />}
               {page === "restore" && <Restore />}
             </motion.main>
           </AnimatePresence>

@@ -350,10 +350,8 @@ fn apply(app: &tauri::AppHandle, target: &Target, settings: &[Setting]) -> Resul
 
     let after = export_customized(&dir)?;
     let block = extract_profile(&after, target.export_name, target.import_name);
-    if need_snapshot {
-        if let Some(b) = &block {
-            save_snapshot(target, &snapshot, &strip_settings(b))?;
-        }
+    if need_snapshot && let Some(b) = &block {
+        save_snapshot(target, &snapshot, &strip_settings(b))?;
     }
     if !block.is_some_and(|b| profile_contains(&b, settings)) {
         return Err(Error::msg(format!(

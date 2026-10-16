@@ -10,9 +10,12 @@ mod memory;
 mod nvidia;
 mod session;
 mod system;
+mod tray;
 mod tweaks;
 mod undo;
 mod win;
+
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,8 +24,29 @@ pub fn run() {
         memory::service::run_as_service();
         return;
     }
+    let settings = appsettings::load();
+    let start_hidden = settings.start_minimized && std::env::args().any(|a| a == "--minimized");
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(move |app| {
+            // Undo a game session left behind by a crash, then watch for cs2.exe.
+            session::recover();
+            session::spawn_watcher();
+            tray::build(app.handle())?;
+            if start_hidden && let Some(w) = app.get_webview_window("main") {
+                let _ = w.hide();
+            }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Keep running in the tray so the game session watcher stays active.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && appsettings::load().close_to_tray
+            {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             // system
             commands::system_info,

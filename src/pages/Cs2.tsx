@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, Gauge as GaugeIcon, Loader2, Play, Sparkles, Target } from "lucide-react";
-import type { BenchStatus, ConfigPreset } from "../api";
+import { AlertTriangle, Check, Copy, Gauge as GaugeIcon, Loader2, Play, Sparkles, Target, Trash2 } from "lucide-react";
+import type { BenchRecord, BenchStatus, ConfigPreset } from "../api";
 import { backend } from "../mock";
 import { PageHead, useLoad, useToast } from "../ui";
 
@@ -57,6 +57,11 @@ export default function Cs2() {
         } />
 
       {inst.error && <div className="callout" style={{ marginBottom: 16 }}>{inst.error}</div>}
+      {i?.updateRequired && (
+        <div className="callout" style={{ marginBottom: 16 }}>
+          <AlertTriangle size={18} /> <span>A Steam indica que o CS2 tem uma atualização pendente. Atualiza antes de jogar ou correr o benchmark.</span>
+        </div>
+      )}
 
       <div className="grid-3">
         <div className="panel corners" style={{ gridColumn: "span 2" }}>
@@ -67,6 +72,7 @@ export default function Cs2() {
             <dt>jogo</dt><dd className="mono" title={i?.gamePath ?? ""}>{i?.gamePath ?? "—"}</dd>
             <dt>steam</dt><dd className="mono">{i?.steamPath ?? "—"}</dd>
             <dt>arranque</dt><dd className="mono">{i?.launchOptions || "(sem opções)"}</dd>
+            <dt>build</dt><dd className="mono">{i?.buildId ?? "—"}{i && !i.updateRequired && i.installed ? " · atualizado" : ""}</dd>
           </dl>
         </div>
         <div className="panel">
@@ -121,6 +127,7 @@ export default function Cs2() {
         </div>
         <Benchmark disabled={!i?.installed || !!i?.running} />
       </div>
+      <BenchHistory />
     </>
   );
 }
@@ -168,6 +175,58 @@ function Benchmark({ disabled }: { disabled: boolean }) {
       <button className="btn" disabled={disabled || active} onClick={start}>
         {active ? <Loader2 size={15} className="spin" /> : <Play size={15} />} {active ? "A correr…" : "Iniciar benchmark"}
       </button>
+    </div>
+  );
+}
+
+function BenchHistory() {
+  const toast = useToast();
+  const hist = useLoad(() => backend.benchHistory());
+  const list = hist.data ?? [];
+  const baseline = list.length ? list[list.length - 1] : null;
+  const best = Math.max(1, ...list.map((b) => b.avgFps));
+  const delta = (b: BenchRecord) => (baseline && b.id !== baseline.id ? ((b.avgFps - baseline.avgFps) / baseline.avgFps) * 100 : null);
+
+  const act = async (fn: () => Promise<BenchRecord[]>) => {
+    try {
+      hist.setData(await fn());
+    } catch (e) {
+      toast("err", String(e));
+    }
+  };
+
+  return (
+    <div className="panel" style={{ marginTop: 16 }}>
+      <div className="row between" style={{ marginBottom: 12 }}>
+        <div>
+          <h3>Histórico de benchmarks</h3>
+          <div className="sub">Compara com a primeira medição{baseline ? ` (${new Date(baseline.date).toLocaleDateString("pt-PT")})` : ""}. Corre um antes e outro depois de otimizar.</div>
+        </div>
+        <button className="btn ghost" onClick={() => hist.reload()}>Atualizar</button>
+      </div>
+      {list.length === 0 && <div className="sub">Ainda não há resultados.</div>}
+      <div className="stack" style={{ gap: 8 }}>
+        {list.map((b) => {
+          const d = delta(b);
+          return (
+            <div key={b.id} className="row" style={{ gap: 14, padding: "8px 4px", borderBottom: "1px solid var(--line)" }}>
+              <span className="mono faint" style={{ width: 128, fontSize: 12 }}>{new Date(b.date).toLocaleString("pt-PT", { dateStyle: "short", timeStyle: "short" })}</span>
+              <div style={{ flex: 1 }}>
+                <div className="bar"><i style={{ width: `${(b.avgFps / best) * 100}%` }} /></div>
+              </div>
+              <span className="mono" style={{ width: 70, textAlign: "right" }}>{b.avgFps.toFixed(0)}</span>
+              <span className="mono" style={{ width: 70, textAlign: "right", color: "var(--violet)" }}>{b.p1Fps.toFixed(0)}</span>
+              <span className="mono" style={{ width: 64, textAlign: "right", color: d === null ? "var(--text-faint)" : d >= 0 ? "var(--lime)" : "var(--red)" }}>
+                {d === null ? "base" : `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`}
+              </span>
+              <input className="input" style={{ width: 170 }} placeholder="nota" defaultValue={b.note ?? ""}
+                onBlur={(e) => e.target.value !== (b.note ?? "") && act(() => backend.benchSetNote(b.id, e.target.value))} />
+              <button className="btn ghost" aria-label="Apagar" onClick={() => act(() => backend.benchDelete(b.id))}><Trash2 size={14} /></button>
+            </div>
+          );
+        })}
+      </div>
+      {list.length > 0 && <div className="sub mono" style={{ marginTop: 8, fontSize: 11 }}>colunas: média · 1% low · variação da média</div>}
     </div>
   );
 }

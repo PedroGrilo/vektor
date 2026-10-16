@@ -1,4 +1,4 @@
-# Vektor
+# Vektor 1.0.0
 
 Otimizador de PC Windows e Counter-Strike 2 — Tauri 2 (Rust) + React.
 
@@ -16,6 +16,11 @@ Otimizador de PC Windows e Counter-Strike 2 — Tauri 2 (Rust) + React.
   `scripts/fetch-npi.sh`, hash verificado). Snapshot do perfil antes de alterar; "Repor original" reimporta-o em modo replace.
 - **CS2**: deteção de Steam/jogo/contas, presets de config (`vektor.cfg` + `autoexec.cfg` + `cs2_video.txt`),
   opções de arranque recomendadas, arranque e benchmark de FPS (mapa Workshop 3240880604).
+- **Modo Jogo**: quando o `cs2.exe` arranca aplica (e reverte quando fecha): fechar/reabrir apps, afinidade de CPU
+  (automática por grupo L3 — X3D/2 CCDs — ou manual), resolução durante o jogo (ex. 4:3), digital vibrance com foco (AMD).
+- **NVIDIA CS2**: perfil dedicado ao `cs2.exe` (baixa latência, desempenho máximo, V-Sync off, texturas) além do global.
+- **Benchmarks**: histórico com comparação à primeira medição.
+- **App**: ícone na bandeja, fechar para a bandeja, arranque com o Windows (tarefa agendada elevada), exportar diagnóstico (.zip sem dados de conta Steam).
 - **Restaurar**: journal em `%ProgramData%\Vektor\journal.json` com o valor original de cada alteração e backups de ficheiros.
 
 ## Arquitetura
@@ -44,3 +49,5 @@ O workflow `.github/workflows/build-windows.yml` compila o instalador num runner
 - Serviço VektorMemory: instalar/arrancar/parar via SCM, privilégio SeProfileSingleProcessPrivilege e purga reais.
 - NVIDIA: `-exportCustomized`/`-silentImport` com driver real e nome do perfil global ("Base Profile").
 - Limpeza: ficheiros bloqueados do Windows Update/Otimização da Entrega; Reciclagem com a app elevada.
+- Modo jogo: SetProcessAffinityMask no cs2.exe, reabertura via explorer.exe sem elevação, heurística X3D.
+- Vibrance AMD (ADL) e troca de resolução; schtasks; Ambiente de Trabalho redirecionado para OneDrive.

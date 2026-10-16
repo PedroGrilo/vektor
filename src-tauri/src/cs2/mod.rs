@@ -37,6 +37,8 @@ pub struct Cs2Install {
     pub running: bool,
     pub users: Vec<SteamUser>,
     pub launch_options: Option<String>,
+    pub update_required: bool,
+    pub build_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -205,6 +207,29 @@ fn launch_options_from(doc: &vdf::Vdf) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Update state from `appmanifest_730.acf` (AppState.StateFlags / buildid).
+///
+/// Steam `EAppState` bits: 1 = Uninstalled, 2 = UpdateRequired, 4 = FullyInstalled,
+/// 8 = Encrypted, 16 = Locked, 32 = FilesMissing, 64 = AppRunning, 128 = FilesCorrupt,
+/// 256 = UpdateRunning, 512 = UpdatePaused, 1024 = UpdateStarted. A normal,
+/// up-to-date install is 4. An update is pending when bit 2 is set, or when the
+/// game is installed but not marked fully installed (bit 4 cleared).
+fn update_state(doc: &vdf::Vdf) -> (bool, Option<String>) {
+    let Some(state) = doc.get("AppState") else { return (false, None) };
+    let build_id = state.get_str("buildid").map(str::to_string);
+    let update = match state.get_str("StateFlags").and_then(|f| f.trim().parse::<u32>().ok()) {
+        Some(flags) => flags & 2 != 0 || flags & 4 == 0,
+        None => false,
+    };
+    (update, build_id)
+}
+
+fn manifest_update_state(lib: &Path) -> (bool, Option<String>) {
+    read_vdf(&lib.join("steamapps").join(format!("appmanifest_{APP_ID}.acf")))
+        .map(|d| update_state(&d))
+        .unwrap_or((false, None))
+}
+
 pub fn detect() -> Result<Cs2Install> {
     let steam = steam_path();
     let game = find_game();
@@ -220,6 +245,8 @@ pub fn detect() -> Result<Cs2Install> {
         .and_then(|d| launch_options_from(&d)),
         _ => None,
     };
+    let (update_required, build_id) =
+        game.as_ref().map(|(lib, _)| manifest_update_state(lib)).unwrap_or((false, None));
     Ok(Cs2Install {
         steam_path: steam.map(|p| p.to_string_lossy().into_owned()),
         game_path: game.as_ref().map(|(_, g)| g.to_string_lossy().into_owned()),
@@ -227,12 +254,27 @@ pub fn detect() -> Result<Cs2Install> {
         running: is_running(),
         users,
         launch_options,
+        update_required,
+        build_id,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manifest_update_flags() {
+        let doc = |flags: &str| {
+            vdf::parse(&format!(r#""AppState" {{ "appid" "730" "StateFlags" "{flags}" "buildid" "20581234" }}"#)).unwrap()
+        };
+        assert_eq!(update_state(&doc("4")), (false, Some("20581234".into())));
+        assert!(update_state(&doc("6")).0);
+        assert!(update_state(&doc("1026")).0);
+        assert!(!update_state(&doc("4")).0);
+        let none = vdf::parse(r#""AppState" { "appid" "730" }"#).unwrap();
+        assert_eq!(update_state(&none), (false, None));
+    }
 
     #[test]
     fn users_and_launch_options() {

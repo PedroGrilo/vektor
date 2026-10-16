@@ -1,6 +1,6 @@
 // In-browser preview data so the UI can be designed with `bun run dev` outside Tauri.
 import { api, inTauri } from "./api";
-import type { BenchStatus, CleanTarget, ConfigPreset, Cs2Config, MemoryConfig, MemoryStatus, NvidiaStatus, TweakInfo } from "./api";
+import type { AppSettings, BenchRecord, BenchStatus, CleanTarget, ConfigPreset, Cs2Config, DisplayInfo, MemoryConfig, MemoryStatus, NvidiaStatus, SessionConfig, SessionStatus, TweakInfo, VibranceInfo } from "./api";
 
 const wait = <T,>(v: T, ms = 350) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), ms));
 
@@ -29,7 +29,7 @@ const presets: ConfigPreset[] = [
   { id: "low-end", name: "PC Modesto", description: "Para portáteis e GPUs integradas.", tag: "lowend", config: presetConfig("0") },
 ];
 
-let bench: BenchStatus = { state: "idle", avgFps: null, p1Fps: null, message: null };
+let benchSt: BenchStatus = { state: "idle", avgFps: null, p1Fps: null, message: null };
 const MB = 1024 * 1024;
 const cleanTargets: CleanTarget[] = [
   { id: "user-temp", title: "Temporários do utilizador", description: "%TEMP% — ficheiros com mais de 24 h.", recommended: true, warning: null, sizeBytes: 2140 * MB, files: 8312, available: true },
@@ -42,7 +42,18 @@ const cleanTargets: CleanTarget[] = [
 ];
 let memCfg: MemoryConfig = { enabled: true, standbyThresholdMb: 1024, freeThresholdMb: 1024, intervalSec: 5 };
 let mem: MemoryStatus = { serviceInstalled: false, serviceRunning: false, config: memCfg, totalMb: 32768, freeMb: 812, standbyMb: 14320, modifiedMb: 210, purgeCount: 0, lastPurge: null };
-let nv: NvidiaStatus = { nvidiaGpu: true, inspectorAvailable: true, applied: false, inspectorVersion: "3.0.2.1" };
+let nv: NvidiaStatus = { nvidiaGpu: true, inspectorAvailable: true, applied: false, cs2Applied: false, inspectorVersion: "3.0.2.1" };
+let sessCfg: SessionConfig = { enabled: true, closeApps: ["Discord.exe", "chrome.exe"], reopenApps: true, affinity: "auto", affinityMask: null, resolution: { width: 1280, height: 960, refresh: 144 }, vibrance: 70 };
+let sess: SessionStatus = { active: false, since: null, cs2Pid: null, actions: [], config: sessCfg };
+const displays: DisplayInfo[] = [{ device: "\\\\.\\DISPLAY1", name: "AOC 24G2", primary: true, current: { width: 1920, height: 1080, refresh: 144 },
+  modes: [{ width: 1920, height: 1080, refresh: 144 }, { width: 1920, height: 1080, refresh: 60 }, { width: 1440, height: 1080, refresh: 144 }, { width: 1280, height: 960, refresh: 144 }, { width: 1024, height: 768, refresh: 144 }] }];
+let vib: VibranceInfo = { supported: true, vendor: "nvidia", current: 50 };
+let bench: BenchRecord[] = [
+  { id: "3", date: "2026-10-16T18:40:00Z", avgFps: 612.4, p1Fps: 248.9, appliedTweaks: 14, sessionActive: true, note: "Depois do Vektor" },
+  { id: "2", date: "2026-10-15T21:10:00Z", avgFps: 548.1, p1Fps: 201.3, appliedTweaks: 6, sessionActive: false, note: null },
+  { id: "1", date: "2026-10-15T20:02:00Z", avgFps: 503.7, p1Fps: 176.0, appliedTweaks: 0, sessionActive: false, note: "Antes" },
+];
+let settings: AppSettings = { autostart: false, startMinimized: false, closeToTray: true };
 
 const mock: typeof api = {
   systemInfo: () => wait({ osName: "Windows 11 Pro", osBuild: "26100", hostname: "CLIENTE-PC", cpu: { name: "AMD Ryzen 7 7800X3D 8-Core Processor", vendor: "amd", cores: 8, threads: 16, zenGen: 4 }, gpus: [{ name: "NVIDIA GeForce RTX 4070", vendor: "nvidia", driverVersion: "32.0.15.6614", vramMb: 12288 }], ramTotalGb: 32, isAdmin: true }),
@@ -55,14 +66,14 @@ const mock: typeof api = {
   cleanRun: (ids) => wait({ freedBytes: cleanTargets.filter((t) => ids.includes(t.id)).reduce((a, t) => a + t.sizeBytes, 0), filesRemoved: 4210, paths: ids }, 1500),
   listBackgroundApps: () => wait([{ name: "Discord.exe", pid: 1, memoryMb: 412, label: "Discord" }, { name: "chrome.exe", pid: 2, memoryMb: 1830, label: "Google Chrome" }, { name: "Spotify.exe", pid: 3, memoryMb: 260, label: "Spotify" }]),
   killBackgroundApps: (names) => wait(names.length, 700),
-  cs2Detect: () => wait({ steamPath: "C:\\Program Files (x86)\\Steam", gamePath: "D:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive", installed: true, running: false, users: [{ steamId64: "76561198000000000", accountId: 39734272, personaName: "cliente", mostRecent: true }], launchOptions: "-novid" }),
+  cs2Detect: () => wait({ steamPath: "C:\\Program Files (x86)\\Steam", gamePath: "D:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive", installed: true, running: false, users: [{ steamId64: "76561198000000000", accountId: 39734272, personaName: "cliente", mostRecent: true }], launchOptions: "-novid", updateRequired: false, buildId: "20481234" }),
   cs2Presets: () => wait(presets),
   cs2ReadConfig: () => wait(presets[1].config),
   cs2ApplyConfig: () => wait(undefined, 700),
   cs2Launch: () => wait(undefined),
   cs2RecommendedLaunchOptions: () => wait("-novid -nojoy +exec vektor"),
-  cs2BenchmarkStart: () => { bench = { state: "running", avgFps: null, p1Fps: null, message: "A correr benchmark…" }; setTimeout(() => { bench = { state: "done", avgFps: 612.4, p1Fps: 248.9, message: null }; }, 5000); return wait(undefined); },
-  cs2BenchmarkPoll: () => wait(bench, 100),
+  cs2BenchmarkStart: () => { benchSt = { state: "running", avgFps: null, p1Fps: null, message: "A correr benchmark…" }; setTimeout(() => { benchSt = { state: "done", avgFps: 612.4, p1Fps: 248.9, message: null }; }, 5000); return wait(undefined); },
+  cs2BenchmarkPoll: () => wait(benchSt, 100),
   memoryStatus: () => wait({ ...mem, freeMb: 700 + Math.random() * 300, standbyMb: 14000 + Math.random() * 800 }, 150),
   memorySetConfig: (c) => { memCfg = c; mem = { ...mem, config: c }; return wait(mem); },
   memoryInstallService: () => { mem = { ...mem, serviceInstalled: true, serviceRunning: true }; return wait(mem, 800); },
@@ -71,6 +82,22 @@ const mock: typeof api = {
   nvidiaStatus: () => wait(nv),
   nvidiaApplyGlobal: () => { nv = { ...nv, applied: true }; return wait(nv, 1500); },
   nvidiaRevertGlobal: () => { nv = { ...nv, applied: false }; return wait(nv, 1200); },
+  nvidiaApplyCs2: () => { nv = { ...nv, cs2Applied: true }; return wait(nv, 1500); },
+  nvidiaRevertCs2: () => { nv = { ...nv, cs2Applied: false }; return wait(nv, 1200); },
+  sessionStatus: () => wait(sess, 150),
+  sessionSetConfig: (c) => { sessCfg = c; sess = { ...sess, config: c }; return wait(sess); },
+  sessionTopology: () => wait({ logicalCount: 16, groups: [{ id: 0, l3Mb: 96, mask: "0xFFFF", logicalCount: 16 }], recommendedMask: "0xFFFC", recommendedLabel: "Todos menos o núcleo 0" }),
+  sessionStop: () => { sess = { ...sess, active: false, actions: [] }; return wait(sess); },
+  displayList: () => wait(displays),
+  vibranceInfo: () => wait(vib),
+  vibrancePreview: (level) => { vib = { ...vib, current: level }; return wait(vib, 80); },
+  vibranceReset: () => { vib = { ...vib, current: 50 }; return wait(vib); },
+  benchHistory: () => wait(bench),
+  benchDelete: (id) => { bench = bench.filter((b) => b.id !== id); return wait(bench); },
+  benchSetNote: (id, note) => { bench = bench.map((b) => (b.id === id ? { ...b, note } : b)); return wait(bench); },
+  appSettings: () => wait(settings),
+  appSetSettings: (s2) => { settings = s2; return wait(settings, 400); },
+  exportDiagnostics: () => wait("C:\\Users\\cliente\\Desktop\\Vektor-diagnostico-20261016.zip", 900),
 };
 
 export const backend: typeof api = inTauri ? api : mock;

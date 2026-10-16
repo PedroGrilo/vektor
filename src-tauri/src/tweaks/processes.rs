@@ -44,6 +44,16 @@ fn label_of(name: &str) -> Option<&'static str> {
     BACKGROUND_APPS.iter().find(|(exe, _)| *exe == lower).map(|(_, l)| *l)
 }
 
+/// True when `name` (executable file name, any case) is in the background-apps allowlist.
+pub fn is_allowed(name: &str) -> bool {
+    label_of(name).is_some()
+}
+
+/// Friendly label of an allowlisted executable.
+pub fn label(name: &str) -> Option<&'static str> {
+    label_of(name)
+}
+
 fn processes() -> System {
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All, true);

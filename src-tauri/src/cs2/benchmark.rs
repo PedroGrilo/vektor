@@ -150,6 +150,10 @@ pub fn poll() -> Result<BenchStatus> {
     match result {
         Some(r) => {
             let _ = std::fs::remove_file(&run.cfg);
+            // `finished` is set right below, so this runs once per run.
+            if let (BenchState::Done, Some(avg), Some(p1)) = (r.state, r.avg_fps, r.p1_fps) {
+                let _ = super::history::add(avg, p1);
+            }
             run.finished = Some(r.clone());
             Ok(r)
         }
