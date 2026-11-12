@@ -72,7 +72,7 @@ export default function Cleanup() {
                 {t.files > 0 && <span className="chip">{t.files.toLocaleString("pt-PT")} ficheiros</span>}
               </div>
               {t.warning && (
-                <p className="row" style={{ marginTop: 8, color: "var(--amber)", gap: 6, alignItems: "flex-start" }}>
+                <p className="row" style={{ marginTop: 8, color: "var(--warn)", gap: 6, alignItems: "flex-start" }}>
                   <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} /> {t.warning}
                 </p>
               )}

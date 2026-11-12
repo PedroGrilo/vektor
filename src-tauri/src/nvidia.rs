@@ -60,6 +60,12 @@ const QUALITY_ENHANCEMENTS_ID: u32 = 0x00CE_2691;
 const QUALITY_ENHANCEMENTS_HIGHPERFORMANCE: u32 = 0x14;
 const PS_TEXFILTER_BILINEAR_IN_ANISO_ID: u32 = 0x0084_CD70;
 const PS_TEXFILTER_DISABLE_TRILIN_SLOPE_ID: u32 = 0x002E_CAF2;
+/// The setting *disables* the trilinear optimisation, so OFF (the driver default) keeps it on.
+const PS_TEXFILTER_DISABLE_TRILIN_SLOPE_OFF: u32 = 0x0;
+/// "Low Latency Mode" as shown by the NVIDIA Control Panel (0 off, 1 on, 2 ultra).
+/// Bookkeeping only: the effect comes from PRERENDERLIMIT.
+const ULL_CPL_STATE_ID: u32 = 0x0005_F543;
+const ULL_CPL_STATE_ON: u32 = 0x1;
 const PS_SHADERDISKCACHE_ID: u32 = 0x0019_8FFF;
 const PS_SHADERDISKCACHE_MAX_SIZE_ID: u32 = 0x00AC_8497;
 const PS_SHADERDISKCACHE_MAX_SIZE_UNLIMITED: u32 = 0xFFFF_FFFF;
@@ -98,24 +104,45 @@ struct Setting {
     id: u32,
     value: u32,
     name: &'static str,
+    /// The setting may legitimately be missing from an export after a successful
+    /// import: NPI only exports values that differ from the driver's predefined
+    /// one, and silently skips IDs an older driver does not know.
+    may_be_absent: bool,
+}
+
+impl Setting {
+    const fn new(id: u32, value: u32, name: &'static str) -> Self {
+        Setting { id, value, name, may_be_absent: false }
+    }
+
+    /// For values equal to the driver default and for cosmetic settings.
+    const fn optional(id: u32, value: u32, name: &'static str) -> Self {
+        Setting { id, value, name, may_be_absent: true }
+    }
 }
 
 fn settings_for(o: &NvGlobalOptions) -> Vec<Setting> {
     let mut v = Vec::new();
     if o.max_performance_power {
-        v.push(Setting { id: PREFERRED_PSTATE_ID, value: PREFERRED_PSTATE_PREFER_MAX, name: "Power management mode" });
+        v.push(Setting::new(PREFERRED_PSTATE_ID, PREFERRED_PSTATE_PREFER_MAX, "Power management mode"));
     }
     if o.low_latency {
-        v.push(Setting { id: PRERENDERLIMIT_ID, value: 1, name: "Maximum pre-rendered frames" });
+        v.push(Setting::new(PRERENDERLIMIT_ID, 1, "Maximum pre-rendered frames"));
+        v.push(Setting::optional(ULL_CPL_STATE_ID, ULL_CPL_STATE_ON, "Ultra Low Latency - CPL State"));
     }
     if o.texture_high_performance {
-        v.push(Setting { id: QUALITY_ENHANCEMENTS_ID, value: QUALITY_ENHANCEMENTS_HIGHPERFORMANCE, name: "Texture filtering - Quality" });
-        v.push(Setting { id: PS_TEXFILTER_BILINEAR_IN_ANISO_ID, value: 1, name: "Texture filtering - Anisotropic sample optimization" });
-        v.push(Setting { id: PS_TEXFILTER_DISABLE_TRILIN_SLOPE_ID, value: 1, name: "Texture filtering - Trilinear optimization" });
+        v.push(Setting::new(QUALITY_ENHANCEMENTS_ID, QUALITY_ENHANCEMENTS_HIGHPERFORMANCE, "Texture filtering - Quality"));
+        v.push(Setting::new(PS_TEXFILTER_BILINEAR_IN_ANISO_ID, 1, "Texture filtering - Anisotropic sample optimization"));
+        v.push(Setting::optional(
+            PS_TEXFILTER_DISABLE_TRILIN_SLOPE_ID,
+            PS_TEXFILTER_DISABLE_TRILIN_SLOPE_OFF,
+            "Texture filtering - Trilinear optimization",
+        ));
     }
     if o.unlimited_shader_cache {
-        v.push(Setting { id: PS_SHADERDISKCACHE_ID, value: 1, name: "Shader Cache" });
-        v.push(Setting { id: PS_SHADERDISKCACHE_MAX_SIZE_ID, value: PS_SHADERDISKCACHE_MAX_SIZE_UNLIMITED, name: "Shader disk cache maximum size" });
+        // ON is the driver default; written anyway in case it had been turned off.
+        v.push(Setting::optional(PS_SHADERDISKCACHE_ID, 1, "Shader Cache"));
+        v.push(Setting::new(PS_SHADERDISKCACHE_MAX_SIZE_ID, PS_SHADERDISKCACHE_MAX_SIZE_UNLIMITED, "Shader disk cache maximum size"));
     }
     v
 }
@@ -129,7 +156,7 @@ fn settings_for_cs2(o: &NvCs2Options) -> Vec<Setting> {
     };
     let mut v = settings_for(&base);
     if o.vsync_off {
-        v.push(Setting { id: VSYNCMODE_ID, value: VSYNCMODE_FORCEOFF, name: "Vertical Sync" });
+        v.push(Setting::new(VSYNCMODE_ID, VSYNCMODE_FORCEOFF, "Vertical Sync"));
     }
     v
 }
@@ -219,11 +246,17 @@ fn strip_settings(block: &str) -> String {
     }
 }
 
+/// True when the exported profile is consistent with our import: every setting is
+/// there with our value, except those that [`Setting::may_be_absent`]. A setting
+/// present with a *different* value always fails.
 fn profile_contains(block: &str, settings: &[Setting]) -> bool {
     settings.iter().all(|s| {
         let id = format!("<SettingID>{}</SettingID>", s.id);
         let val = format!("<SettingValue>{}</SettingValue>", s.value);
-        block.split("<ProfileSetting>").any(|ps| ps.contains(&id) && ps.contains(&val))
+        match block.split("<ProfileSetting>").find(|ps| ps.contains(&id)) {
+            Some(ps) => ps.contains(&val),
+            None => s.may_be_absent,
+        }
     })
 }
 
@@ -244,16 +277,35 @@ fn has_nvidia_gpu() -> bool {
         .unwrap_or(false)
 }
 
+/// NPI is a GUI program: on some failures (no compatible driver, import exception)
+/// it opens a message box even in silent mode and would block forever.
+#[cfg(windows)]
+const NPI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
 #[cfg(windows)]
 fn run_npi(dir: &Path, args: &[&std::ffi::OsStr]) -> Result<()> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let status = std::process::Command::new(dir.join(NPI_EXE))
+    let mut child = std::process::Command::new(dir.join(NPI_EXE))
         .args(args)
         .current_dir(dir)
         .creation_flags(CREATE_NO_WINDOW)
-        .status()
+        .spawn()
         .map_err(|e| Error::msg(format!("Não foi possível executar o Profile Inspector: {e}")))?;
+    let started = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if started.elapsed() >= NPI_TIMEOUT {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(Error::msg(
+                "O Profile Inspector não respondeu (driver NVIDIA incompatível ou janela de erro aberta). Fecha-o e tenta de novo.",
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
     if !status.success() {
         return Err(Error::msg(format!("O Profile Inspector terminou com erro ({status})")));
     }
@@ -432,11 +484,34 @@ mod tests {
     fn render_and_verify_roundtrip() {
         let o = NvGlobalOptions { max_performance_power: true, low_latency: true, texture_high_performance: true, unlimited_shader_cache: true };
         let s = settings_for(&o);
-        assert_eq!(s.len(), 7);
+        assert_eq!(s.len(), 8);
         let nip = render_nip(&GLOBAL, &s);
         assert!(nip.contains("<SettingID>8102046</SettingID>")); // PRERENDERLIMIT 0x007BA09E
         assert!(nip.contains("<SettingValue>4294967295</SettingValue>"));
         assert!(profile_contains(&nip, &s));
         assert!(!profile_contains(EXPORT, &s));
+    }
+
+    #[test]
+    fn trilinear_optimisation_stays_on() {
+        let o = NvGlobalOptions { max_performance_power: false, low_latency: false, texture_high_performance: true, unlimited_shader_cache: false };
+        let s = settings_for(&o);
+        let tri = s.iter().find(|x| x.id == PS_TEXFILTER_DISABLE_TRILIN_SLOPE_ID).unwrap();
+        assert_eq!(tri.value, 0, "1 would disable the optimisation");
+    }
+
+    #[test]
+    fn default_valued_settings_may_be_missing_from_export() {
+        // NPI exports only values that differ from the driver default, so after a
+        // successful import "Shader Cache = On" is not in the export.
+        let o = NvGlobalOptions { max_performance_power: false, low_latency: false, texture_high_performance: false, unlimited_shader_cache: true };
+        let s = settings_for(&o);
+        let export = "<Profile><Settings><ProfileSetting><SettingID>11306135</SettingID><SettingValue>4294967295</SettingValue></ProfileSetting></Settings></Profile>";
+        assert!(profile_contains(export, &s));
+        // ...but a conflicting value is still a failure,
+        let wrong = "<Profile><Settings><ProfileSetting><SettingID>11306135</SettingID><SettingValue>4294967295</SettingValue></ProfileSetting><ProfileSetting><SettingID>1675263</SettingID><SettingValue>0</SettingValue></ProfileSetting></Settings></Profile>";
+        assert!(!profile_contains(wrong, &s));
+        // and so is a required setting that never arrived.
+        assert!(!profile_contains("<Profile><Settings /></Profile>", &s));
     }
 }

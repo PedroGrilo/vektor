@@ -149,6 +149,10 @@ export interface MemoryStatus {
   purgeCount: number;
   /** ISO timestamp of the last purge by the service */
   lastPurge: string | null;
+  /** ISO timestamp of the service's last evaluation (heartbeat) */
+  lastCheck: string | null;
+  /** why the service could not read memory or purge, if it failed */
+  lastError: string | null;
 }
 
 // ---------- nvidia (Profile Inspector, global "Base Profile") ----------
@@ -256,6 +260,25 @@ export interface AppSettings {
   startMinimized: boolean;
   /** closing the window keeps Vektor in the tray (needed for the game session watcher) */
   closeToTray: boolean;
+  /** look for new versions on GitHub at startup and every few hours */
+  autoUpdate: boolean;
+}
+
+// ---------- updates (GitHub releases, signed) ----------
+export interface UpdateInfo {
+  currentVersion: string;
+  available: boolean;
+  /** new version when available */
+  version: string | null;
+  /** release notes (markdown) */
+  notes: string | null;
+  /** ISO timestamp of the release */
+  date: string | null;
+}
+/** Payload of the `vektor://update-progress` event while downloading. */
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
 }
 
 export const api = {
@@ -309,7 +332,21 @@ export const api = {
   appSettings: () => invoke<AppSettings>("app_settings"),
   appSetSettings: (settings: AppSettings) => invoke<AppSettings>("app_set_settings", { settings }),
   exportDiagnostics: () => invoke<string>("export_diagnostics"),
+
+  updateCheck: () => invoke<UpdateInfo>("update_check"),
+  /** Downloads and runs the installer; the app restarts on its own. */
+  updateInstall: () => invoke<void>("update_install"),
 };
 
 /** True when running inside Tauri (false in a plain browser preview). */
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+export const AUTHOR_URL = "https://github.com/PedroGrilo";
+export const PROJECT_URL = "https://github.com/PedroGrilo/vektor";
+
+/** Open a link in the user's browser. Only the URLs allowed in capabilities/default.json work in the app. */
+export const openUrl = (url: string): Promise<void> => {
+  if (inTauri) return invoke<void>("plugin:opener|open_url", { url });
+  window.open(url, "_blank", "noopener");
+  return Promise.resolve();
+};

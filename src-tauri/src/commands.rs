@@ -2,7 +2,7 @@
 //! Blocking work runs on the blocking thread pool so the UI never stalls.
 
 use crate::error::{Error, Result};
-use crate::{appsettings, cleanup, cs2, diagnostics, display, journal, memory, nvidia, session, system, tweaks};
+use crate::{appsettings, cleanup, cs2, diagnostics, display, journal, memory, nvidia, session, system, tweaks, updates};
 
 async fn blocking<T, F>(f: F) -> Result<T>
 where
@@ -238,4 +238,16 @@ pub async fn app_set_settings(settings: appsettings::AppSettings) -> Result<apps
 #[tauri::command]
 pub async fn export_diagnostics() -> Result<String> {
     blocking(diagnostics::export).await
+}
+
+// ---------- updates ----------
+
+#[tauri::command]
+pub async fn update_check(app: tauri::AppHandle) -> Result<updates::UpdateInfo> {
+    updates::check(&app).await
+}
+
+#[tauri::command]
+pub async fn update_install(app: tauri::AppHandle) -> Result<()> {
+    updates::install(&app).await
 }

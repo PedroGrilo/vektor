@@ -66,8 +66,15 @@ mod imp {
             .ok_or_else(|| Error::Unavailable("ntdll.dll".into()))
     }
 
+    /// NTSTATUS returned when the caller's token lacks an enabled privilege.
+    const STATUS_PRIVILEGE_NOT_HELD: u32 = 0xC000_0061;
+
     pub fn memory_lists() -> Result<MemoryLists> {
         let nt = ntdll()?;
+        // Reading the memory lists is gated on the same privilege as purging, and an
+        // elevated admin token carries it *disabled*. Enable it first (best effort:
+        // the query result below is what decides success).
+        let privilege = ensure_privilege();
         let mut info = SystemMemoryListInformation::default();
         let mut ret = 0u32;
         let status = unsafe {
@@ -79,6 +86,9 @@ mod imp {
             )
         };
         if status < 0 {
+            if status as u32 == STATUS_PRIVILEGE_NOT_HELD {
+                privilege?;
+            }
             return Err(Error::msg(format!("Não foi possível ler a memória (NTSTATUS 0x{:08X})", status as u32)));
         }
         let pages = |n: usize| n as u64 * PAGE_SIZE;
@@ -89,33 +99,46 @@ mod imp {
         })
     }
 
+    /// Enable `SeProfileSingleProcessPrivilege` once per process. The outcome is
+    /// cached: a token either holds the privilege or it does not.
+    fn ensure_privilege() -> Result<()> {
+        static ENABLED: OnceLock<std::result::Result<(), String>> = OnceLock::new();
+        ENABLED
+            .get_or_init(|| enable_profile_privilege().map_err(|e| e.to_string()))
+            .clone()
+            .map_err(Error::msg)
+    }
+
     fn enable_profile_privilege() -> Result<()> {
         unsafe {
             let mut token = HANDLE::default();
             OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &mut token)
                 .map_err(|e| Error::msg(format!("OpenProcessToken: {e}")))?;
-            let mut luid = LUID::default();
-            let result = LookupPrivilegeValueW(None, w!("SeProfileSingleProcessPrivilege"), &mut luid)
-                .and_then(|_| {
-                    let tp = TOKEN_PRIVILEGES {
-                        PrivilegeCount: 1,
-                        Privileges: [LUID_AND_ATTRIBUTES { Luid: luid, Attributes: SE_PRIVILEGE_ENABLED }],
-                    };
-                    AdjustTokenPrivileges(token, false, Some(&tp), 0, None, None)
-                });
-            let not_assigned = GetLastError() == ERROR_NOT_ALL_ASSIGNED;
+            let result = (|| {
+                let mut luid = LUID::default();
+                LookupPrivilegeValueW(None, w!("SeProfileSingleProcessPrivilege"), &mut luid)
+                    .map_err(|e| Error::msg(format!("LookupPrivilegeValue: {e}")))?;
+                let tp = TOKEN_PRIVILEGES {
+                    PrivilegeCount: 1,
+                    Privileges: [LUID_AND_ATTRIBUTES { Luid: luid, Attributes: SE_PRIVILEGE_ENABLED }],
+                };
+                AdjustTokenPrivileges(token, false, Some(&tp), 0, None, None)
+                    .map_err(|e| Error::msg(format!("AdjustTokenPrivileges: {e}")))?;
+                // The call succeeds even when the token does not hold the privilege;
+                // only the last error (read right away) tells the two cases apart.
+                if GetLastError() == ERROR_NOT_ALL_ASSIGNED {
+                    return Err(Error::msg("Sem privilégio para gerir a memória (é preciso administrador)"));
+                }
+                Ok(())
+            })();
             let _ = CloseHandle(token);
-            result.map_err(|e| Error::msg(format!("AdjustTokenPrivileges: {e}")))?;
-            if not_assigned {
-                return Err(Error::msg("Sem privilégio para limpar a memória (é preciso administrador)"));
-            }
-            Ok(())
+            result
         }
     }
 
     pub fn purge_standby_list() -> Result<()> {
         let nt = ntdll()?;
-        enable_profile_privilege()?;
+        ensure_privilege()?;
         let command = MEMORY_PURGE_STANDBY_LIST;
         let status = unsafe {
             (nt.set)(

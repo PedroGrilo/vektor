@@ -13,13 +13,14 @@ mod system;
 mod tray;
 mod tweaks;
 mod undo;
+mod updates;
 mod win;
 
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // `vektor.exe --service` is started by the Service Control Manager.
+    // `vektor.exe --memory-service` is started by the Service Control Manager.
     if std::env::args().any(|a| a == memory::SERVICE_ARG) {
         memory::service::run_as_service();
         return;
@@ -28,6 +29,7 @@ pub fn run() {
     let start_hidden = settings.start_minimized && std::env::args().any(|a| a == "--minimized");
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             // Undo a game session left behind by a crash, then watch for cs2.exe.
             session::recover();
@@ -44,7 +46,7 @@ pub fn run() {
                 && appsettings::load().close_to_tray
             {
                 api.prevent_close();
-                let _ = window.hide();
+                tray::hide_main(window);
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -98,6 +100,8 @@ pub fn run() {
             commands::app_settings,
             commands::app_set_settings,
             commands::export_diagnostics,
+            commands::update_check,
+            commands::update_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vektor");

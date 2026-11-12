@@ -62,14 +62,22 @@ pub struct MemoryStatus {
     pub modified_mb: u64,
     pub purge_count: u64,
     pub last_purge: Option<String>,
+    pub last_check: Option<String>,
+    pub last_error: Option<String>,
 }
 
-/// Counters written by the service after each purge.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// State reported by the service: purge counters, a heartbeat and the last failure.
+/// Without the last two a service that cannot read memory or purge looks identical
+/// to one that simply has nothing to do.
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub(crate) struct ServiceCounters {
     pub purge_count: u64,
     pub last_purge: Option<String>,
+    /// Last time the service evaluated the rule.
+    pub last_check: Option<String>,
+    /// Why the last evaluation or purge failed; cleared on the next success.
+    pub last_error: Option<String>,
 }
 
 fn config_path() -> PathBuf {
@@ -151,6 +159,9 @@ pub fn status() -> Result<MemoryStatus> {
         modified_mb: lists.modified_bytes / MB,
         purge_count: counters.purge_count,
         last_purge: counters.last_purge,
+        // Heartbeat and error describe a live service; stale ones would mislead.
+        last_check: counters.last_check.filter(|_| running),
+        last_error: counters.last_error.filter(|_| running),
     })
 }
 

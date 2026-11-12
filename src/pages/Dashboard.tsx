@@ -2,13 +2,13 @@ import { useState } from "react";
 import { ArrowRight, Cpu, MemoryStick, MonitorCog, Rocket, ShieldCheck, Zap } from "lucide-react";
 import type { PageId } from "../App";
 import { backend } from "../mock";
-import { Gauge, PageHead, useLoad, usePoll, useToast } from "../ui";
+import { Gauge, PageHead, useLiveStats, useLoad, useToast } from "../ui";
 
 export default function Dashboard({ go }: { go: (p: PageId) => void }) {
   const toast = useToast();
   const sys = useLoad(() => backend.systemInfo());
   const tw = useLoad(() => backend.listTweaks());
-  const stats = usePoll(() => backend.liveStats(), 1500);
+  const stats = useLiveStats();
   const [boosting, setBoosting] = useState(false);
 
   const available = (tw.data ?? []).filter((t) => t.available);
@@ -56,11 +56,11 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
           </div>
           <button className="btn primary big" disabled={boosting || tw.loading} onClick={boost}>
             <Rocket size={18} />
-            {boosting ? "A otimizar…" : quick.length ? `Otimizar agora (${quick.length})` : "Sistema otimizado"}
+            {boosting ? "A otimizar…" : tw.loading && !tw.data ? "A analisar…" : quick.length ? `Otimizar agora (${quick.length})` : "Sistema otimizado"}
           </button>
           <p className="sub" style={{ marginTop: 14, maxWidth: 360 }}>
-            Aplica só otimizações de <b style={{ color: "var(--lime)" }}>risco baixo</b> que não exigem reinício.
-            As restantes estão em <a style={{ color: "var(--cyan)", cursor: "pointer" }} onClick={() => go("optimize")}>Otimizações</a>.
+            Aplica só otimizações de <b style={{ color: "var(--ok)" }}>risco baixo</b> que não exigem reinício.
+            As restantes estão em <a onClick={() => go("optimize")}>Otimizações</a>.
           </p>
         </div>
 
@@ -68,7 +68,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
           <div className="panel">
             <div className="row" style={{ justifyContent: "space-around" }}>
               <Gauge value={stats?.cpuUsage ?? 0} label="CPU" />
-              <Gauge value={stats ? (stats.ramUsedGb / stats.ramTotalGb) * 100 : 0} label="RAM" color="var(--violet)" />
+              <Gauge value={stats ? (stats.ramUsedGb / stats.ramTotalGb) * 100 : 0} label="RAM" color="var(--accent-2)" />
             </div>
           </div>
           <div className="panel">
@@ -92,7 +92,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
 
       <div className="grid-2" style={{ marginTop: 16 }}>
         <div className="panel row" style={{ gap: 16 }}>
-          <Zap size={22} color="var(--cyan)" />
+          <Zap size={22} color="var(--accent)" />
           <div style={{ flex: 1 }}>
             <h3>Counter-Strike 2</h3>
             <div className="sub">Configs, presets, opções de arranque e benchmark de FPS.</div>
@@ -100,10 +100,10 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
           <button className="btn" onClick={() => go("cs2")}>Abrir <ArrowRight size={15} /></button>
         </div>
         <div className="panel row" style={{ gap: 16 }}>
-          <ShieldCheck size={22} color="var(--lime)" />
+          <ShieldCheck size={22} color="var(--ok)" />
           <div style={{ flex: 1 }}>
             <h3>Tudo reversível</h3>
-            <div className="sub">Backup antes de cada alteração. {s && !s.isAdmin && <span style={{ color: "var(--amber)" }}>Sem privilégios de administrador.</span>}</div>
+            <div className="sub">Backup antes de cada alteração. {s && !s.isAdmin && <span style={{ color: "var(--warn)" }}>Sem privilégios de administrador.</span>}</div>
           </div>
           <button className="btn" onClick={() => go("restore")}>Restaurar <ArrowRight size={15} /></button>
         </div>
@@ -115,7 +115,7 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
 function Spec({ icon, label, value, extra }: { icon: React.ReactNode; label: string; value: string; extra: string }) {
   return (
     <div className="panel">
-      <div className="row" style={{ color: "var(--cyan)", marginBottom: 10 }}>{icon}<span className="label">{label}</span></div>
+      <div className="row" style={{ color: "var(--accent)", marginBottom: 10 }}>{icon}<span className="label">{label}</span></div>
       <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4 }}>{value}</div>
       <div className="sub mono" style={{ fontSize: 11.5 }}>{extra}</div>
     </div>

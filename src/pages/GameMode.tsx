@@ -8,7 +8,7 @@ const modeKey = (m: DisplayMode) => `${m.width}x${m.height}@${m.refresh}`;
 
 export default function GameMode() {
   const toast = useToast();
-  const live = usePoll(() => backend.sessionStatus(), 2000);
+  const [live] = usePoll(() => backend.sessionStatus(), 2000);
   const topo = useLoad(() => backend.sessionTopology());
   const displays = useLoad(() => backend.displayList());
   const apps = useLoad(() => backend.listBackgroundApps());
@@ -63,7 +63,7 @@ export default function GameMode() {
       <div className={`panel ${live?.active ? "corners" : ""}`} style={{ marginBottom: 16 }}>
         <div className="row between">
           <div className="row">
-            <Power size={20} color={live?.active ? "var(--lime)" : "var(--text-faint)"} />
+            <Power size={20} color={live?.active ? "var(--ok)" : "var(--text-faint)"} />
             <div>
               <h3>{live?.active ? "Sessão ativa" : "À espera do CS2"}</h3>
               <div className="sub">
@@ -88,7 +88,7 @@ export default function GameMode() {
 
       <div className="grid-2">
         <div className="panel">
-          <h3 className="row"><XCircle size={16} color="var(--cyan)" /> Fechar apps durante o jogo</h3>
+          <h3 className="row"><XCircle size={16} color="var(--accent)" /> Fechar apps durante o jogo</h3>
           <div className="sub" style={{ marginBottom: 10 }}>Só apps conhecidas. Steam e CS2 nunca são fechados.</div>
           {appChoices.length === 0 && <div className="sub">Nenhuma app conhecida a correr agora.</div>}
           <div className="stack" style={{ gap: 4 }}>
@@ -105,7 +105,7 @@ export default function GameMode() {
         </div>
 
         <div className="panel">
-          <h3 className="row"><Cpu size={16} color="var(--cyan)" /> Afinidade de CPU</h3>
+          <h3 className="row"><Cpu size={16} color="var(--accent)" /> Afinidade de CPU</h3>
           <div className="sub" style={{ marginBottom: 12 }}>Fixa o CS2 em núcleos específicos. Útil em Ryzen com 2 CCDs ou 3D V-Cache.</div>
           <div className="tabs" style={{ marginBottom: 12 }}>
             {(["off", "auto", "custom"] as const).map((m) => (
@@ -118,7 +118,7 @@ export default function GameMode() {
             <div className="sub">
               {topo.data.logicalCount} threads · {topo.data.groups.length} grupo(s) L3
               {topo.data.groups.map((g) => <span key={g.id} className="chip" style={{ marginLeft: 6 }}>L3 {g.l3Mb} MB · {g.logicalCount}t</span>)}
-              {cfg.affinity === "auto" && <div style={{ marginTop: 8 }}>Automático: <b style={{ color: "var(--cyan)" }}>{topo.data.recommendedLabel}</b> <span className="mono faint">{topo.data.recommendedMask}</span></div>}
+              {cfg.affinity === "auto" && <div style={{ marginTop: 8 }}>Automático: <b style={{ color: "var(--accent)" }}>{topo.data.recommendedLabel}</b> <span className="mono faint">{topo.data.recommendedMask}</span></div>}
             </div>
           )}
           {cfg.affinity === "custom" && (
@@ -128,7 +128,7 @@ export default function GameMode() {
         </div>
 
         <div className="panel">
-          <h3 className="row"><MonitorUp size={16} color="var(--cyan)" /> Resolução durante o jogo</h3>
+          <h3 className="row"><MonitorUp size={16} color="var(--accent)" /> Resolução durante o jogo</h3>
           <div className="sub" style={{ marginBottom: 12 }}>
             Ex.: 4:3 esticado (1280×960). Repõe a resolução nativa quando o jogo fecha. Para esticar, ativa o dimensionamento "Ecrã inteiro" no painel da gráfica.
           </div>
@@ -144,7 +144,7 @@ export default function GameMode() {
 
         <div className="panel">
           <div className="row between">
-            <h3 className="row"><Palette size={16} color="var(--cyan)" /> Digital vibrance</h3>
+            <h3 className="row"><Palette size={16} color="var(--accent)" /> Digital vibrance</h3>
             <Toggle label="Vibrance" on={cfg.vibrance !== null} disabled={!vib.data?.supported}
               onChange={(v) => setCfg({ ...cfg, vibrance: v ? 70 : null })} />
           </div>
@@ -159,7 +159,7 @@ export default function GameMode() {
             <>
               <div className="row between" style={{ marginBottom: 6 }}>
                 <span className="sub">Nível</span>
-                <span className="mono" style={{ color: "var(--cyan)" }}>{cfg.vibrance}%</span>
+                <span className="mono" style={{ color: "var(--accent)" }}>{cfg.vibrance}%</span>
               </div>
               <input type="range" min={50} max={100} value={cfg.vibrance} onChange={(e) => setCfg({ ...cfg, vibrance: Number(e.target.value) })} />
               <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 10 }}>

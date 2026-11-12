@@ -102,7 +102,9 @@ pub fn live_stats() -> Result<LiveStats> {
     let sys = guard.get_or_insert_with(System::new);
     sys.refresh_cpu_usage();
     sys.refresh_memory();
-    sys.refresh_processes(ProcessesToUpdate::All, true);
+    // Names only: the default refresh also reads CPU, memory, disk and exe path of
+    // every process, which is wasted work on a 2 s poll.
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, sysinfo::ProcessRefreshKind::nothing());
     let cs2_running = sys.processes().values().any(|p| p.name().eq_ignore_ascii_case("cs2.exe"));
     Ok(LiveStats {
         cpu_usage: sys.global_cpu_usage(),

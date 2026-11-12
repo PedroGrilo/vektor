@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Vektor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "identifier": "com.linkconsulting.vektor",
   "build": {
     "frontendDist": "../dist",
@@ -21,7 +21,7 @@
         "decorations": false,
         "transparent": false,
         "center": true,
-        "backgroundColor": "#05070d"
+        "backgroundColor": "#0d0e10"
       }
     ],
     "security": {
@@ -50,6 +50,18 @@
     },
     "resources": [
       "resources/npi/*"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE1M0I2NzVFMjBGNDdGQTgKUldTb2YvUWdYbWM3cGZZYlJXMHppTUlzdkNRY0IzV1Fkb3Y2VWg3M0Z3cW4zakdvVkFlRUs2bTEK",
+      "endpoints": [
+        "https://github.com/PedroGrilo/vektor/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

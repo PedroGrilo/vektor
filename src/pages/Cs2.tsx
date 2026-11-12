@@ -90,7 +90,7 @@ export default function Cs2() {
         {(presets.data ?? []).map((p) => (
           <button key={p.id} className={`tweak ${chosen === p.id ? "applied" : ""}`} style={{ textAlign: "left", cursor: "pointer", color: "inherit" }} onClick={() => setChosen(p.id)}>
             <div>
-              <h4 className="row" style={{ gap: 8 }}><Target size={15} color="var(--cyan)" />{p.name}</h4>
+              <h4 className="row" style={{ gap: 8 }}><Target size={15} color="var(--accent)" />{p.name}</h4>
               <p>{p.description}</p>
               <div className="meta">
                 <span className="chip">{TAG_LABEL[p.tag]}</span>
@@ -98,7 +98,7 @@ export default function Cs2() {
                 <span className="chip">{Object.keys(p.config.video.values).length} vídeo</span>
               </div>
             </div>
-            {chosen === p.id ? <Check color="var(--cyan)" /> : <span />}
+            {chosen === p.id ? <Check color="var(--accent)" /> : <span />}
           </button>
         ))}
       </div>
@@ -165,11 +165,11 @@ function Benchmark({ disabled }: { disabled: boolean }) {
           <h3>Benchmark de FPS</h3>
           <div className="sub">Corre o mapa de benchmark da Workshop e mede o FPS médio e o 1% low.</div>
         </div>
-        <GaugeIcon color="var(--violet)" />
+        <GaugeIcon color="var(--accent-2)" />
       </div>
       <div className="row" style={{ gap: 28, margin: "18px 0" }}>
         <div><div className="label">média</div><div className="value">{st?.avgFps?.toFixed(0) ?? "—"}</div></div>
-        <div><div className="label">1% low</div><div className="value" style={{ color: "var(--violet)" }}>{st?.p1Fps?.toFixed(0) ?? "—"}</div></div>
+        <div><div className="label">1% low</div><div className="value" style={{ color: "var(--accent-2)" }}>{st?.p1Fps?.toFixed(0) ?? "—"}</div></div>
         <div className="dim" style={{ flex: 1, fontSize: 12.5 }}>{st?.message ?? (st?.state === "done" ? "Concluído." : "")}</div>
       </div>
       <button className="btn" disabled={disabled || active} onClick={start}>
@@ -215,8 +215,8 @@ function BenchHistory() {
                 <div className="bar"><i style={{ width: `${(b.avgFps / best) * 100}%` }} /></div>
               </div>
               <span className="mono" style={{ width: 70, textAlign: "right" }}>{b.avgFps.toFixed(0)}</span>
-              <span className="mono" style={{ width: 70, textAlign: "right", color: "var(--violet)" }}>{b.p1Fps.toFixed(0)}</span>
-              <span className="mono" style={{ width: 64, textAlign: "right", color: d === null ? "var(--text-faint)" : d >= 0 ? "var(--lime)" : "var(--red)" }}>
+              <span className="mono" style={{ width: 70, textAlign: "right", color: "var(--accent-2)" }}>{b.p1Fps.toFixed(0)}</span>
+              <span className="mono" style={{ width: 64, textAlign: "right", color: d === null ? "var(--text-faint)" : d >= 0 ? "var(--ok)" : "var(--danger)" }}>
                 {d === null ? "base" : `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`}
               </span>
               <input className="input" style={{ width: 170 }} placeholder="nota" defaultValue={b.note ?? ""}

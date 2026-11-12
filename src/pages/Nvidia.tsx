@@ -25,6 +25,7 @@ export default function Nvidia() {
       toast("ok", kind === "apply" ? "Perfil global NVIDIA otimizado" : "Perfil global NVIDIA restaurado");
     } catch (e) {
       toast("err", String(e));
+      void st.reload();
     } finally {
       setBusy(null);
     }
@@ -54,7 +55,7 @@ export default function Nvidia() {
       </div>
 
       <div className="panel row wrap" style={{ marginTop: 16, gap: 16 }}>
-        <Cpu size={22} color="var(--lime)" />
+        <Cpu size={22} color="var(--accent)" />
         <div style={{ flex: 1, minWidth: 260 }}>
           <h3>Aplicar ao perfil global</h3>
           <div className="sub">
@@ -72,7 +73,7 @@ export default function Nvidia() {
         </button>
       </div>
 
-      {s && <Cs2Profile status={s} blocked={blocked} onChange={st.setData} />}
+      {s && <Cs2Profile status={s} blocked={blocked} onChange={st.setData} onError={() => void st.reload()} />}
     </>
   );
 }
@@ -84,7 +85,7 @@ const CS2_OPTIONS: { key: keyof NvCs2Options; title: string }[] = [
   { key: "textureHighPerformance", title: "Texturas: alto desempenho" },
 ];
 
-function Cs2Profile({ status, blocked, onChange }: { status: NvidiaStatus; blocked: boolean; onChange: (s: NvidiaStatus) => void }) {
+function Cs2Profile({ status, blocked, onChange, onError }: { status: NvidiaStatus; blocked: boolean; onChange: (s: NvidiaStatus) => void; onError: () => void }) {
   const toast = useToast();
   const [opts, setOpts] = useState<NvCs2Options>({ lowLatency: true, maxPerformancePower: true, vsyncOff: true, textureHighPerformance: true });
   const [busy, setBusy] = useState<"apply" | "revert" | null>(null);
@@ -95,6 +96,7 @@ function Cs2Profile({ status, blocked, onChange }: { status: NvidiaStatus; block
       toast("ok", kind === "apply" ? "Perfil NVIDIA do CS2 otimizado" : "Perfil NVIDIA do CS2 restaurado");
     } catch (e) {
       toast("err", String(e));
+      onError();
     } finally {
       setBusy(null);
     }
@@ -103,7 +105,7 @@ function Cs2Profile({ status, blocked, onChange }: { status: NvidiaStatus; block
     <div className="panel corners" style={{ marginTop: 16 }}>
       <div className="row between wrap" style={{ gap: 12 }}>
         <div className="row">
-          <Crosshair size={20} color="var(--cyan)" />
+          <Crosshair size={20} color="var(--accent)" />
           <div>
             <h3>Perfil dedicado ao CS2</h3>
             <div className="sub">Só afeta o cs2.exe e tem prioridade sobre o perfil global.</div>

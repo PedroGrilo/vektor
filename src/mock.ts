@@ -41,7 +41,7 @@ const cleanTargets: CleanTarget[] = [
   { id: "prefetch", title: "Prefetch", description: "Dados de arranque rápido de apps.", recommended: false, warning: "Não dá FPS; as apps abrem mais devagar até o Windows reconstruir.", sizeBytes: 42 * MB, files: 256, available: true },
 ];
 let memCfg: MemoryConfig = { enabled: true, standbyThresholdMb: 1024, freeThresholdMb: 1024, intervalSec: 5 };
-let mem: MemoryStatus = { serviceInstalled: false, serviceRunning: false, config: memCfg, totalMb: 32768, freeMb: 812, standbyMb: 14320, modifiedMb: 210, purgeCount: 0, lastPurge: null };
+let mem: MemoryStatus = { serviceInstalled: false, serviceRunning: false, config: memCfg, totalMb: 32768, freeMb: 812, standbyMb: 14320, modifiedMb: 210, purgeCount: 0, lastPurge: null, lastCheck: null, lastError: null };
 let nv: NvidiaStatus = { nvidiaGpu: true, inspectorAvailable: true, applied: false, cs2Applied: false, inspectorVersion: "3.0.2.1" };
 let sessCfg: SessionConfig = { enabled: true, closeApps: ["Discord.exe", "chrome.exe"], reopenApps: true, affinity: "auto", affinityMask: null, resolution: { width: 1280, height: 960, refresh: 144 }, vibrance: 70 };
 let sess: SessionStatus = { active: false, since: null, cs2Pid: null, actions: [], config: sessCfg };
@@ -53,7 +53,7 @@ let bench: BenchRecord[] = [
   { id: "2", date: "2026-10-15T21:10:00Z", avgFps: 548.1, p1Fps: 201.3, appliedTweaks: 6, sessionActive: false, note: null },
   { id: "1", date: "2026-10-15T20:02:00Z", avgFps: 503.7, p1Fps: 176.0, appliedTweaks: 0, sessionActive: false, note: "Antes" },
 ];
-let settings: AppSettings = { autostart: false, startMinimized: false, closeToTray: true };
+let settings: AppSettings = { autostart: false, startMinimized: false, closeToTray: true, autoUpdate: true };
 
 const mock: typeof api = {
   systemInfo: () => wait({ osName: "Windows 11 Pro", osBuild: "26100", hostname: "CLIENTE-PC", cpu: { name: "AMD Ryzen 7 7800X3D 8-Core Processor", vendor: "amd", cores: 8, threads: 16, zenGen: 4 }, gpus: [{ name: "NVIDIA GeForce RTX 4070", vendor: "nvidia", driverVersion: "32.0.15.6614", vramMb: 12288 }], ramTotalGb: 32, isAdmin: true }),
@@ -76,8 +76,8 @@ const mock: typeof api = {
   cs2BenchmarkPoll: () => wait(benchSt, 100),
   memoryStatus: () => wait({ ...mem, freeMb: 700 + Math.random() * 300, standbyMb: 14000 + Math.random() * 800 }, 150),
   memorySetConfig: (c) => { memCfg = c; mem = { ...mem, config: c }; return wait(mem); },
-  memoryInstallService: () => { mem = { ...mem, serviceInstalled: true, serviceRunning: true }; return wait(mem, 800); },
-  memoryUninstallService: () => { mem = { ...mem, serviceInstalled: false, serviceRunning: false }; return wait(mem, 600); },
+  memoryInstallService: () => { mem = { ...mem, serviceInstalled: true, serviceRunning: true, purgeCount: 3, lastPurge: new Date(Date.now() - 12 * 60000).toISOString(), lastCheck: new Date().toISOString() }; return wait(mem, 800); },
+  memoryUninstallService: () => { mem = { ...mem, serviceInstalled: false, serviceRunning: false, lastCheck: null }; return wait(mem, 600); },
   memoryPurgeNow: () => { mem = { ...mem, freeMb: 14800, standbyMb: 320 }; return wait(mem, 500); },
   nvidiaStatus: () => wait(nv),
   nvidiaApplyGlobal: () => { nv = { ...nv, applied: true }; return wait(nv, 1500); },
@@ -98,6 +98,8 @@ const mock: typeof api = {
   appSettings: () => wait(settings),
   appSetSettings: (s2) => { settings = s2; return wait(settings, 400); },
   exportDiagnostics: () => wait("C:\\Users\\cliente\\Desktop\\Vektor-diagnostico-20261016.zip", 900),
+  updateCheck: () => wait({ currentVersion: __APP_VERSION__, available: true, version: "1.2.0", notes: "- Exemplo de notas de versão\n- Só aparece na pré-visualização no browser", date: "2026-12-01T10:00:00Z" }, 900),
+  updateInstall: () => wait(undefined, 2500),
 };
 
 export const backend: typeof api = inTauri ? api : mock;

@@ -9,8 +9,9 @@ mod imp {
     use std::time::{Duration, Instant};
 
     use windows_service::service::{
-        ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode, ServiceInfo,
-        ServiceStartType, ServiceState, ServiceStatus, ServiceType,
+        ServiceAccess, ServiceAction, ServiceActionType, ServiceControl, ServiceControlAccept, ServiceErrorControl,
+        ServiceExitCode, ServiceFailureActions, ServiceFailureResetPeriod, ServiceInfo, ServiceStartType,
+        ServiceState, ServiceStatus, ServiceType,
     };
     use windows_service::service_control_handler::{self, ServiceControlHandlerResult};
     use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
@@ -24,6 +25,9 @@ mod imp {
 
     const ERROR_SERVICE_DOES_NOT_EXIST: i32 = 1060;
     const MIN_PURGE_GAP: Duration = Duration::from_secs(10);
+    /// The heartbeat is only for the UI, so it is written at most this often
+    /// (purges and error changes are written immediately).
+    const HEARTBEAT_EVERY: Duration = Duration::from_secs(30);
 
     fn win_err(e: windows_service::Error) -> Error {
         Error::msg(format!("Serviço {SERVICE_NAME}: {e}"))
@@ -70,19 +74,29 @@ mod imp {
         ))?;
 
         let mut last_purge: Option<Instant> = None;
+        let mut last_saved: Option<Instant> = None;
+        let mut counters = load_counters();
         loop {
             let cfg = load_config();
-            if let Ok(lists) = nt::memory_lists() {
+            let before = counters.clone();
+            // Every failure is recorded: a service that silently skips its work is
+            // indistinguishable from one with nothing to do.
+            let outcome = nt::memory_lists().and_then(|lists| {
                 let gap_ok = last_purge.is_none_or(|t| t.elapsed() >= MIN_PURGE_GAP);
                 if gap_ok && should_purge(&cfg, lists.standby_bytes, lists.free_bytes) {
                     last_purge = Some(Instant::now());
-                    if nt::purge_standby_list().is_ok() {
-                        let mut c = load_counters();
-                        c.purge_count += 1;
-                        c.last_purge = Some(now_iso8601());
-                        let _ = save_counters(&c);
-                    }
+                    nt::purge_standby_list()?;
+                    counters.purge_count += 1;
+                    counters.last_purge = Some(now_iso8601());
                 }
+                Ok(())
+            });
+            counters.last_error = outcome.err().map(|e| e.to_string());
+            let changed = counters != before;
+            if changed || last_saved.is_none_or(|t| t.elapsed() >= HEARTBEAT_EVERY) {
+                counters.last_check = Some(now_iso8601());
+                let _ = save_counters(&counters);
+                last_saved = Some(Instant::now());
             }
             match stop_rx.recv_timeout(Duration::from_secs(cfg.interval_sec)) {
                 Err(RecvTimeoutError::Timeout) => continue,
@@ -165,6 +179,15 @@ mod imp {
             Err(e) => return Err(win_err(e)),
         };
         svc.set_description(SERVICE_DESCRIPTION).map_err(win_err)?;
+        // Restart after a crash instead of staying down until the next boot.
+        // Best effort: the service works without it.
+        let restart = ServiceAction { action_type: ServiceActionType::Restart, delay: Duration::from_secs(5) };
+        let _ = svc.update_failure_actions(ServiceFailureActions {
+            reset_period: ServiceFailureResetPeriod::After(Duration::from_secs(24 * 60 * 60)),
+            reboot_msg: None,
+            command: None,
+            actions: Some(vec![restart.clone(), restart.clone(), restart]),
+        });
         if svc.query_status().map_err(win_err)?.current_state != ServiceState::Running {
             svc.start::<&str>(&[]).map_err(win_err)?;
         }

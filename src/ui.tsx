@@ -1,8 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { AnimatePresence, motion } from "motion/react";
 import { CircleAlert, CircleCheck } from "lucide-react";
-import type { Risk } from "./api";
+import type { LiveStats, Risk } from "./api";
+import { backend } from "./mock";
+import { isVisible, onVisibility } from "./visibility";
 
 // ---------- async data ----------
 
@@ -28,25 +29,86 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   return { data, error, loading, reload, setData };
 }
 
+/**
+ * Runs `tick` every `ms` while the window is on screen. Polling stops when the
+ * app is minimised or hidden in the tray (so Vektor costs nothing while the
+ * game runs) and resumes with an immediate tick. Ticks never overlap.
+ */
+function startPolling(tick: () => Promise<void>, ms: number) {
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let running = false;
+  const run = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await tick();
+    } finally {
+      running = false;
+    }
+  };
+  const sync = () => {
+    if (isVisible() && timer === null) {
+      void run();
+      timer = setInterval(run, ms);
+    } else if (!isVisible() && timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+  };
+  const off = onVisibility(sync);
+  sync();
+  return () => {
+    off();
+    if (timer !== null) clearInterval(timer);
+  };
+}
+
 export function usePoll<T>(fn: () => Promise<T>, ms: number) {
   const [data, setData] = useState<T | null>(null);
+  const fnRef = useRef(fn);
+  useEffect(() => { fnRef.current = fn; });
   useEffect(() => {
     let alive = true;
-    const tick = async () => {
+    const stop = startPolling(async () => {
       try {
-        const v = await fn();
+        const v = await fnRef.current();
         if (alive) setData(v);
       } catch {
         /* keep last value */
       }
-    };
-    void tick();
-    const id = setInterval(tick, ms);
-    return () => { alive = false; clearInterval(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, ms);
+    return () => { alive = false; stop(); };
   }, [ms]);
-  return data;
+  return [data, setData] as const;
 }
+
+// One shared poll for CPU/RAM, however many components show it.
+const live = {
+  value: null as LiveStats | null,
+  subs: new Set<() => void>(),
+  stop: null as (() => void) | null,
+};
+function subscribeLive(cb: () => void) {
+  live.subs.add(cb);
+  if (!live.stop) {
+    live.stop = startPolling(async () => {
+      try {
+        live.value = await backend.liveStats();
+        live.subs.forEach((s) => s());
+      } catch {
+        /* keep last value */
+      }
+    }, 2000);
+  }
+  return () => {
+    live.subs.delete(cb);
+    if (live.subs.size === 0 && live.stop) {
+      live.stop();
+      live.stop = null;
+    }
+  };
+}
+export const useLiveStats = () => useSyncExternalStore(subscribeLive, () => live.value);
 
 // ---------- toasts ----------
 
@@ -58,22 +120,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const push = useCallback((kind: Toast["kind"], text: string) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, kind, text }]);
+    setToasts((t) => [...t.slice(-3), { id, kind, text }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === "err" ? 7000 : 3500);
   }, []);
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="toasts">
-        <AnimatePresence>
-          {toasts.map((t) => (
-            <motion.div key={t.id} className={`toast ${t.kind}`}
-              initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 40 }}>
-              {t.kind === "ok" ? <CircleCheck size={18} /> : <CircleAlert size={18} />}
-              <span>{t.text}</span>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+      <div className="toasts" role="status" aria-live="polite">
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast ${t.kind}`}>
+            {t.kind === "ok" ? <CircleCheck size={18} /> : <CircleAlert size={18} />}
+            <span>{t.text}</span>
+          </div>
+        ))}
       </div>
     </ToastCtx.Provider>
   );
@@ -105,20 +164,19 @@ export function Toggle({ on, busy, disabled, onChange, label }: { on: boolean; b
 const riskLabel: Record<Risk, string> = { low: "risco baixo", medium: "risco médio", high: "risco alto" };
 export const RiskChip = ({ risk }: { risk: Risk }) => <span className={`chip ${risk}`}>{riskLabel[risk]}</span>;
 
-export function Gauge({ value, max = 100, label, unit = "%", size = 148, color = "var(--cyan)" }: { value: number; max?: number; label: string; unit?: string; size?: number; color?: string }) {
+export const Gauge = memo(function Gauge({ value, max = 100, label, unit = "%", size = 148, color = "var(--accent)" }: { value: number; max?: number; label: string; unit?: string; size?: number; color?: string }) {
   const stroke = 8;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const sweep = 0.75; // 270° arc
-  const pct = Math.max(0, Math.min(1, value / max));
+  const pct = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
   return (
     <div className="gauge" style={{ width: size, height: size }}>
       <svg width={size} height={size}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke}
+        <circle className="track" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke}
           strokeDasharray={`${c * sweep} ${c}`} strokeLinecap="round" />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-          strokeDasharray={`${c * sweep * pct} ${c}`} strokeLinecap="round"
-          style={{ transition: "stroke-dasharray .8s cubic-bezier(.2,.8,.2,1)", filter: `drop-shadow(0 0 6px ${color})` }} />
+        <circle className="fill" cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={`${c * sweep * pct} ${c}`} strokeLinecap="round" />
       </svg>
       <div className="center">
         <div className="value">{value.toFixed(0)}<span className="faint" style={{ fontSize: 13 }}>{unit}</span></div>
@@ -126,7 +184,7 @@ export function Gauge({ value, max = 100, label, unit = "%", size = 148, color =
       </div>
     </div>
   );
-}
+});
 
 export const fmtBytes = (b: number) => {
   const u = ["B", "KB", "MB", "GB"];
@@ -134,3 +192,6 @@ export const fmtBytes = (b: number) => {
   while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
   return `${b.toFixed(i ? 1 : 0)} ${u[i]}`;
 };
+
+/** MB as a compact GB/MB string, e.g. 14320 -> "14.0 GB". */
+export const fmtMb = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`);

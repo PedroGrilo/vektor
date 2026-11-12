@@ -15,11 +15,13 @@ pub struct AppSettings {
     pub autostart: bool,
     pub start_minimized: bool,
     pub close_to_tray: bool,
+    /// Look for new releases at startup and every few hours (never installs by itself).
+    pub auto_update: bool,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { autostart: false, start_minimized: false, close_to_tray: true }
+        Self { autostart: false, start_minimized: false, close_to_tray: true, auto_update: true }
     }
 }
 
@@ -124,7 +126,7 @@ mod tests {
     fn defaults_and_partial_file() {
         assert_eq!(parse(b"garbage"), AppSettings::default());
         let s = parse(br#"{"startMinimized":true}"#);
-        assert!(s.start_minimized && s.close_to_tray && !s.autostart);
+        assert!(s.start_minimized && s.close_to_tray && !s.autostart && s.auto_update);
     }
 
     #[test]

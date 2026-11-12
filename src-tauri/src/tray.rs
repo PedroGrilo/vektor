@@ -2,7 +2,16 @@
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+
+/// Payload `true`/`false`: the window is on screen / hidden in the tray.
+pub const VISIBLE_EVENT: &str = "vektor://visible";
+
+/// Hide the window in the tray and let the UI pause its polling.
+pub fn hide_main(window: &tauri::Window) {
+    let _ = window.hide();
+    let _ = window.emit(VISIBLE_EVENT, false);
+}
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Abrir Vektor", true, None::<&str>)?;
@@ -42,6 +51,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
+        let _ = w.emit(VISIBLE_EVENT, true);
         let _ = w.unminimize();
         let _ = w.set_focus();
     }

@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { Crosshair, Rocket, Settings as SettingsIcon, Gauge as GaugeIcon, History, MemoryStick, Minus, MonitorCog, Square, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { memo, useEffect, useState } from "react";
+import { ArrowUpCircle, Crosshair, Rocket, Settings as SettingsIcon, Gauge as GaugeIcon, History, MemoryStick, Minus, MonitorCog, Square, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { inTauri } from "./api";
 import { backend } from "./mock";
-import { ToastProvider, usePoll } from "./ui";
+import { ToastProvider, useLiveStats } from "./ui";
+import { startAutoUpdateChecks, useUpdate } from "./updates";
 import Dashboard from "./pages/Dashboard";
 import Optimize from "./pages/Optimize";
 import Cs2 from "./pages/Cs2";
@@ -28,14 +28,15 @@ const NAV: { id: PageId; label: string; icon: typeof GaugeIcon; section?: string
   { id: "restore", label: "Restaurar", icon: History, section: "Segurança" },
   { id: "settings", label: "Definições", icon: SettingsIcon },
 ];
+const PAGE_IDS = new Set<string>(NAV.map((n) => n.id));
 
-function TitleBar() {
+const TitleBar = memo(function TitleBar() {
   const win = inTauri ? getCurrentWindow() : null;
   return (
     <header className="titlebar" data-tauri-drag-region>
       <div className="brand" data-tauri-drag-region>
         <Logo />
-        VEKTOR <small>v1.0.0</small>
+        VEKTOR <small>v{__APP_VERSION__}</small>
       </div>
       <div className="controls">
         <button aria-label="Minimizar" onClick={() => win?.minimize()}><Minus size={15} /></button>
@@ -44,25 +45,27 @@ function TitleBar() {
       </div>
     </header>
   );
-}
+});
 
 export function Logo({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
       <defs>
         <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#67e8f9" />
-          <stop offset="1" stopColor="#a78bfa" />
+          <stop offset="0" stopColor="#cfeee6" />
+          <stop offset=".45" stopColor="#28c39d" />
+          <stop offset="1" stopColor="#0f7a62" />
         </linearGradient>
       </defs>
       <path d="M3 4h4.2L12 15.5 16.8 4H21l-7.4 16h-3.2L3 4Z" fill="url(#lg)" />
-      <path d="M9.5 4h5L12 10 9.5 4Z" fill="#05070d" opacity=".55" />
+      <path d="M9.5 4h5L12 10 9.5 4Z" fill="#0d0e10" opacity=".55" />
     </svg>
   );
 }
 
+// Isolated so the 2 s CPU/RAM tick re-renders these two lines, not the whole shell.
 function SidebarStatus() {
-  const stats = usePoll(() => backend.liveStats(), 2500);
+  const stats = useLiveStats();
   return (
     <div className="status-card">
       <div className="row between" style={{ marginBottom: 6 }}>
@@ -74,47 +77,68 @@ function SidebarStatus() {
   );
 }
 
+function UpdateBadge({ go }: { go: (p: PageId) => void }) {
+  const up = useUpdate();
+  if (up.phase !== "available" && up.phase !== "installing") return null;
+  return (
+    <button className="btn primary" style={{ marginBottom: 10 }} onClick={() => go("settings")}>
+      <ArrowUpCircle size={15} />
+      {up.phase === "installing" ? "A atualizar…" : `Atualizar para ${up.info?.version ?? ""}`}
+    </button>
+  );
+}
+
+const Sidebar = memo(function Sidebar({ page, go }: { page: PageId; go: (p: PageId) => void }) {
+  return (
+    <nav className="sidebar">
+      {NAV.map((n) => (
+        <div key={n.id}>
+          {n.section && <div className="section">{n.section}</div>}
+          <button className={`nav-item ${page === n.id ? "active" : ""}`} aria-current={page === n.id ? "page" : undefined} onClick={() => go(n.id)}>
+            <n.icon size={18} />
+            {n.label}
+          </button>
+        </div>
+      ))}
+      <div className="spacer" />
+      <UpdateBadge go={go} />
+      <SidebarStatus />
+    </nav>
+  );
+});
+
+function initialPage(): PageId {
+  const hash = window.location.hash.slice(1);
+  return PAGE_IDS.has(hash) ? (hash as PageId) : "dashboard";
+}
+
 export default function App() {
-  const [page, setPage] = useState<PageId>(() => (window.location.hash.slice(1) as PageId) || "dashboard");
+  const [page, setPage] = useState<PageId>(initialPage);
+
+  useEffect(() => {
+    // Respect the "check for updates" preference; default is on.
+    backend.appSettings().then((s) => { if (s.autoUpdate) startAutoUpdateChecks(); }).catch(() => {});
+  }, []);
+
   return (
     <ToastProvider>
-      <div className="backdrop">
-        <div className="grid" />
-        <div className="orb a" />
-        <div className="orb b" />
-        <div className="scan" />
-      </div>
+      <div className="backdrop" />
       <div className="shell">
         <TitleBar />
         <div className="body">
-          <nav className="sidebar">
-            {NAV.map((n) => (
-              <div key={n.id}>
-                {n.section && <div className="section">{n.section}</div>}
-                <button className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(n.id)}>
-                  <n.icon size={18} />
-                  {n.label}
-                </button>
-              </div>
-            ))}
-            <div className="spacer" />
-            <SidebarStatus />
-          </nav>
-          <AnimatePresence mode="wait">
-            <motion.main key={page} className="page"
-              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}>
-              {page === "dashboard" && <Dashboard go={setPage} />}
-              {page === "optimize" && <Optimize />}
-              {page === "cleanup" && <Cleanup />}
-              {page === "memory" && <Memory />}
-              {page === "nvidia" && <Nvidia />}
-              {page === "game" && <GameMode />}
-              {page === "cs2" && <Cs2 />}
-              {page === "settings" && <SettingsPage />}
-              {page === "restore" && <Restore />}
-            </motion.main>
-          </AnimatePresence>
+          <Sidebar page={page} go={setPage} />
+          {/* The key remounts the page so the CSS enter animation runs; no exit animation = instant navigation. */}
+          <main key={page} className="page">
+            {page === "dashboard" && <Dashboard go={setPage} />}
+            {page === "optimize" && <Optimize />}
+            {page === "cleanup" && <Cleanup />}
+            {page === "memory" && <Memory />}
+            {page === "nvidia" && <Nvidia />}
+            {page === "game" && <GameMode />}
+            {page === "cs2" && <Cs2 />}
+            {page === "settings" && <SettingsPage />}
+            {page === "restore" && <Restore />}
+          </main>
         </div>
       </div>
     </ToastProvider>

@@ -72,6 +72,7 @@ const COMPAT_LAYERS: &str = r"Software\Microsoft\Windows NT\CurrentVersion\AppCo
 const FSO_FLAG: &str = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
 const DX_GLOBAL: &str = "DirectXUserGlobalSettings";
 const PERSONALIZE: &str = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+const EDGE_POLICY: &str = r"SOFTWARE\Policies\Microsoft\Edge";
 
 /// Set `key=value;` inside a DirectX "k=v;k=v;" settings string, keeping other entries.
 fn merge_dx_setting(existing: &str, key: &str, value: &str) -> String {
@@ -403,6 +404,71 @@ static TWEAKS: &[Tweak] = &[
         requires_reboot: true,
         needs: Needs::Nothing,
         apply: |id| set_all(id, &[(Hive::Hklm, r"SOFTWARE\Microsoft\Windows\Dwm", "OverlayTestMode", d(5))]),
+    },
+    // ---- 1.1.0: background interference on current Windows 11 builds ----
+    // These change visible behaviour, so they need a sign-out and are therefore
+    // never part of the one-click boost (which skips anything needing a restart).
+    Tweak {
+        id: "accessibility-hotkeys-off",
+        category: Category::Input,
+        title: "Desligar atalhos de acessibilidade",
+        description: "Impede que carregar 5× em Shift (Teclas Presas), manter Shift 8 s (Teclas de Filtragem) ou \
+                      Num Lock 5 s (Teclas de Alternância) abra um aviso e te tire do jogo. \
+                      As funcionalidades continuam disponíveis nas Definições do Windows.",
+        risk: Risk::Low,
+        requires_reboot: true,
+        needs: Needs::Nothing,
+        apply: |id| {
+            // Flags with the hotkey and confirmation bits cleared (defaults: 510, 126, 62).
+            set_all(id, &[
+                (Hive::Hkcu, r"Control Panel\Accessibility\StickyKeys", "Flags", sz("506")),
+                (Hive::Hkcu, r"Control Panel\Accessibility\Keyboard Response", "Flags", sz("122")),
+                (Hive::Hkcu, r"Control Panel\Accessibility\ToggleKeys", "Flags", sz("58")),
+            ])
+        },
+    },
+    Tweak {
+        id: "edge-background-off",
+        category: Category::System,
+        title: "Edge sem execução em segundo plano",
+        description: "Desliga o Startup Boost e o modo em segundo plano do Microsoft Edge, que mantêm processos \
+                      abertos depois de o fechares. O Edge demora um pouco mais a abrir e mostra \
+                      “gerido pela organização” nas definições.",
+        risk: Risk::Low,
+        requires_reboot: true,
+        needs: Needs::Nothing,
+        apply: |id| {
+            set_all(id, &[
+                (Hive::Hklm, EDGE_POLICY, "StartupBoostEnabled", d(0)),
+                (Hive::Hklm, EDGE_POLICY, "BackgroundModeEnabled", d(0)),
+            ])
+        },
+    },
+    Tweak {
+        id: "widgets-off",
+        category: Category::System,
+        title: "Desligar Widgets (Windows 11)",
+        description: "Remove o painel de Widgets (notícias e meteorologia) e os processos WebView2 que ele mantém \
+                      em segundo plano. Sem efeito no Windows 10.",
+        risk: Risk::Low,
+        requires_reboot: true,
+        needs: Needs::Nothing,
+        apply: |id| set_all(id, &[(Hive::Hklm, r"SOFTWARE\Policies\Microsoft\Dsh", "AllowNewsAndInterests", d(0))]),
+    },
+    Tweak {
+        id: "delivery-optimization-p2p-off",
+        category: Category::Network,
+        title: "Atualizações sem partilha P2P",
+        description: "A Otimização da Entrega deixa de partilhar atualizações do Windows com outros PCs, evitando \
+                      uploads em segundo plano durante o jogo. As atualizações continuam a ser transferidas \
+                      normalmente; as Definições mostram “gerido pela organização”.",
+        risk: Risk::Low,
+        requires_reboot: true,
+        needs: Needs::Nothing,
+        apply: |id| {
+            // 0 = HTTP only. Never 100 ("bypass"): deprecated on Windows 11 and can break downloads.
+            set_all(id, &[(Hive::Hklm, r"SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization", "DODownloadMode", d(0))])
+        },
     },
 ];
 

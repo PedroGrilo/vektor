@@ -1,17 +1,21 @@
-## Vektor 1.0.0
+## Vektor 1.1.0
 
-Otimizador de PC Windows e Counter-Strike 2. Tudo local, sem contas nem servidor; todas as alterações são reversíveis em **Restaurar**.
+### Novidades
+- **Atualizações dentro da app**: o Vektor verifica no arranque (e de 6 em 6 horas) se há versão nova no GitHub e instala-a com um clique em Definições → Atualizações. O instalador é verificado por assinatura antes de correr.
+- **Novo visual**: paleta verde-escura nova em toda a app, ícone novo e efeito de vidro nas barras e botões.
+- **Memória**: página redesenhada com a composição da RAM (em uso, modificada, standby, livre) e o estado da regra em tempo real — mostra porque é que o serviço purgou ou não.
+- **4 otimizações novas** para o Windows 11: atalhos de acessibilidade (Shift 5×) desligados, Edge sem execução em segundo plano, Widgets desligados e atualizações sem partilha P2P.
 
-### Funcionalidades
-- **Otimizações Windows** (18): plano de energia, Modo de Jogo, Game DVR, HAGS, MMCSS, rede, prioridades, rato, power throttling, jogos em janela, efeitos visuais, MPO, CS2 (prioridade, GPU, ecrã inteiro), telemetria.
-- **Limpeza** com análise prévia: temporários, INetCache, WER, dumps, reciclagem, miniaturas, prefetch, caches de shaders (drivers e Steam), Windows Update, Otimização da Entrega, DNS.
-- **Memória (estilo ISLC)**: serviço VektorMemory que purga a lista de standby.
-- **NVIDIA**: perfil global e perfil dedicado ao CS2 via NVIDIA Profile Inspector (MIT), com cópia do perfil original.
-- **Modo Jogo**: fecha/reabre apps, afinidade de CPU, resolução 4:3, vibrance (AMD) — só enquanto o CS2 corre.
-- **CS2**: presets de config, opções de arranque, benchmark de FPS com histórico, aviso de atualização pendente.
-- Bandeja, arranque com o Windows, exportar diagnóstico.
+### Correções
+- **VektorMemory**: o serviço deixava de purgar sem dar qualquer sinal quando uma leitura de memória ou a purga falhava. Agora ativa o privilégio necessário antes de ler, regista o erro, mostra-o na app e reinicia sozinho se falhar. O serviço também é parado e retomado durante as atualizações.
+- **NVIDIA**: a opção "Filtragem de texturas: alto desempenho" desligava a otimização trilinear em vez de a manter ligada. A verificação depois de aplicar também dava erro quando o perfil tinha sido aplicado com sucesso; ambos corrigidos. "Baixa latência" passa a aparecer como ligada no Painel de Controlo NVIDIA.
+- O Profile Inspector já não deixa a app presa se abrir uma janela de erro.
+
+### Desempenho
+- Navegação instantânea entre páginas e interface mais leve (sem animações contínuas nem desfoques em painéis).
+- O Vektor deixa de consultar CPU/RAM quando está minimizado ou na bandeja, e cada leitura passou a ser muito mais leve — menos interferência durante o jogo.
 
 ### Notas
-- O instalador não está assinado: o Windows SmartScreen mostra "Editor desconhecido".
+- Quem tem a 1.0.0 instala a 1.1.0 manualmente uma última vez; daí em diante as atualizações chegam pela app.
+- O instalador não tem assinatura de código Windows: o SmartScreen mostra "Editor desconhecido".
 - A app pede privilégios de administrador ao abrir.
-- Digital vibrance só em AMD nesta versão.
