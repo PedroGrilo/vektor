@@ -106,6 +106,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .mem-stat .value { font-size: 18px; margin-top: 2px; }
 .rule-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--text-dim); }
 .rule-line b { color: var(--text); font-weight: 600; }
+.suggest { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; margin: 4px 0 14px; border-radius: 10px; border: 1px dashed var(--line-hi); background: var(--accent-soft); }
+.suggest b { color: var(--text); font-weight: 600; }
 
 /* ---------- toasts ---------- */
 .toasts { position: fixed; right: 22px; bottom: 22px; display: flex; flex-direction: column; gap: 10px; z-index: 50; }

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { CircleAlert, Loader2, MemoryStick, Power, Zap } from "lucide-react";
+import { CircleAlert, Loader2, MemoryStick, Power, Wand2, Zap } from "lucide-react";
 import type { MemoryConfig, MemoryStatus } from "../api";
 import { backend } from "../mock";
+import { nominalGb, suggestedRules } from "../suggest";
 import { PageHead, Toggle, fmtMb, usePoll, useToast } from "../ui";
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString("pt-PT");
@@ -44,6 +45,12 @@ export default function Memory() {
   const dirty = !!cfg && !!s && JSON.stringify(cfg) !== JSON.stringify(s.config);
   // Thresholds up to half the RAM make sense on 32/64 GB machines.
   const maxThreshold = Math.max(8192, Math.floor((s?.totalMb ?? 0) / 2 / 256) * 256);
+  // Rules suggested for this PC's RAM. Applying them only moves the sliders: saving stays explicit.
+  const suggestion = s ? suggestedRules(s.totalMb) : null;
+  const usingSuggestion = !!cfg && !!suggestion
+    && cfg.standbyThresholdMb === suggestion.standbyThresholdMb
+    && cfg.freeThresholdMb === suggestion.freeThresholdMb
+    && cfg.intervalSec === suggestion.intervalSec;
 
   return (
     <>
@@ -108,6 +115,17 @@ export default function Memory() {
                 value={cfg.freeThresholdMb} onChange={(v) => setCfg({ ...cfg, freeThresholdMb: v })} />
               <Slider label="Verificar a cada" unit="s" min={2} max={60} step={1}
                 value={cfg.intervalSec} onChange={(v) => setCfg({ ...cfg, intervalSec: v })} />
+              {s && suggestion && (
+                <div className="suggest">
+                  <div className="sub">
+                    <b>Sugerido para {nominalGb(s.totalMb)} GB de RAM</b><br />
+                    standby {suggestion.standbyThresholdMb} MB · livre {suggestion.freeThresholdMb} MB · a cada {suggestion.intervalSec} s
+                  </div>
+                  {usingSuggestion
+                    ? <span className="chip on">em uso</span>
+                    : <button className="btn" onClick={() => setCfg({ ...cfg, ...suggestion })}><Wand2 size={15} /> Usar sugerido</button>}
+                </div>
+              )}
               <div className="row between" style={{ marginTop: 6 }}>
                 <span className="sub">{dirty ? "Alterações por guardar." : "O serviço lê as regras a cada verificação."}</span>
                 <button className="btn primary" disabled={!dirty || busy !== null} onClick={() => act("cfg", () => backend.memorySetConfig(cfg), "Regras guardadas")}>

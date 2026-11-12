@@ -80,6 +80,22 @@ Windows keeps recently used files in a "standby" cache and sometimes fails to re
 
 The page shows how RAM is split between in use, modified, standby and free, and tells you which half of the rule is met right now. There is also a "Purge now" button.
 
+#### Suggested settings
+
+The second slider is the one that matters: it is how much free memory you want Windows to always have. A good starting point is about one eighth of your RAM. From version 1.1.2 the app works this out for your PC and fills it in when you press **Usar sugerido**; nothing changes until you save.
+
+| Your RAM | Purge when standby exceeds | …and free memory is below | Check every |
+|---|---|---|---|
+| 8 GB | 1024 MB | 1024 MB | 5 s |
+| 16 GB | 1024 MB | 2048 MB | 5 s |
+| 32 GB or more | 1024 MB | 4096 MB | 5 s |
+
+It is a formula, not a fixed table, so any amount of RAM works: 12 GB gives 1536 MB, 20 GB gives 2560 MB, 24 GB gives 3072 MB. From 32 GB up (40, 48, 64 GB...) it stays at 4096 MB, because keeping more than 4 GB free brings no benefit.
+
+- These are starting points, not measured optima. If you still get stutter when memory fills up, raise the second value one step at a time.
+- Seeing "0 purges" does not mean it is broken. It means free memory never dropped below your limit, which is normal on PCs with 32 GB or more.
+- Avoid setting the free-memory limit to half of your RAM, as some guides suggest. The service would purge almost all the time and throw away cache that Windows uses to load files faster, for no gain.
+
 ### NVIDIA
 
 Uses [NVIDIA Profile Inspector](https://github.com/Orbmu2k/nvidiaProfileInspector) (MIT, bundled) to set low latency mode, maximum-performance power management, high-performance texture filtering and an unlimited shader cache. There is a global profile and a separate one for `cs2.exe` that can also force V-Sync off. The original profile is saved before the first change and can be restored.
