@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, CircleAlert, Loader2, MemoryStick, Minus, Power, Zap } from "lucide-react";
+import { CircleAlert, Loader2, MemoryStick, Power, Zap } from "lucide-react";
 import type { MemoryConfig, MemoryStatus } from "../api";
 import { backend } from "../mock";
 import { PageHead, Toggle, fmtMb, usePoll, useToast } from "../ui";
@@ -162,26 +162,28 @@ function Composition({ s }: { s: MemoryStatus | null }) {
   );
 }
 
-/** Shows which half of the purge rule is met right now, so "why didn't it purge?" has an answer. */
+/** Says in plain words whether the service will purge and, if not, which number is holding it back. */
 function RuleState({ s }: { s: MemoryStatus }) {
   const c = s.config;
   const standbyOk = s.standbyMb >= c.standbyThresholdMb;
   const freeOk = s.freeMb < c.freeThresholdMb;
+  // Plenty of free memory is the usual reason, so it is explained first.
   const verdict = !s.serviceRunning
-    ? "O serviço não está a correr — instala-o para purgar automaticamente."
+    ? "O serviço não está a correr — instala-o ou inicia-o para purgar automaticamente."
     : !c.enabled
-      ? "Regras desativadas."
+      ? "As regras estão desligadas: o serviço não purga."
       : standbyOk && freeOk
-        ? "Condições cumpridas: o serviço purga na próxima verificação."
-        : !standbyOk
-          ? "Sem purga: a lista de standby ainda está abaixo do limite."
-          : "Sem purga: ainda há memória livre suficiente. Sobe o limite de memória livre para purgar mais cedo.";
+        ? "As duas condições estão cumpridas: o serviço purga na próxima verificação."
+        : !freeOk
+          ? `Não é preciso purgar: tens ${fmtMb(s.freeMb)} livres e a regra só atua abaixo de ${fmtMb(c.freeThresholdMb)}.`
+          : `Não é preciso purgar: a standby tem ${fmtMb(s.standbyMb)} e a regra só atua a partir de ${fmtMb(c.standbyThresholdMb)}.`;
   return (
     <div className="panel">
       <h3>Estado da regra</h3>
-      <div className="sub" style={{ marginBottom: 10 }}>{verdict}</div>
-      <div className="rule-line"><span>Standby <b>{fmtMb(s.standbyMb)}</b> ≥ {fmtMb(c.standbyThresholdMb)}</span><Mark ok={standbyOk} /></div>
-      <div className="rule-line"><span>Livre <b>{fmtMb(s.freeMb)}</b> &lt; {fmtMb(c.freeThresholdMb)}</span><Mark ok={freeOk} /></div>
+      <div className="sub" style={{ marginBottom: 4 }}>{verdict}</div>
+      <div className="sub faint" style={{ marginBottom: 10 }}>O serviço só purga quando as duas condições se cumprem ao mesmo tempo.</div>
+      <div className="rule-line"><span>Standby de pelo menos {fmtMb(c.standbyThresholdMb)} · agora <b>{fmtMb(s.standbyMb)}</b></span><Met ok={standbyOk} /></div>
+      <div className="rule-line"><span>Menos de {fmtMb(c.freeThresholdMb)} livres · agora <b>{fmtMb(s.freeMb)}</b></span><Met ok={freeOk} /></div>
       <div className="rule-line">
         <span>Purgas automáticas <b>{s.purgeCount}</b>{s.lastPurge ? ` · última às ${time(s.lastPurge)}` : ""}</span>
         <span className="mono faint">{s.lastCheck ? `verificado ${time(s.lastCheck)}` : ""}</span>
@@ -190,7 +192,7 @@ function RuleState({ s }: { s: MemoryStatus }) {
   );
 }
 
-const Mark = ({ ok }: { ok: boolean }) => (ok ? <Check size={15} color="var(--ok)" /> : <Minus size={15} color="var(--text-faint)" />);
+const Met = ({ ok }: { ok: boolean }) => <span className={`chip ${ok ? "on" : ""}`}>{ok ? "cumprida" : "por cumprir"}</span>;
 
 function Slider({ label, unit, min, max, step, value, onChange }: { label: string; unit: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void }) {
   return (
