@@ -1,84 +1,178 @@
-# Vektor 1.1.0
+<p align="center">
+  <img src="src-tauri/icons/128x128.png" width="96" alt="Vektor logo" />
+</p>
 
-Otimizador de PC Windows e Counter-Strike 2 — Tauri 2 (Rust) + React.
+<h1 align="center">Vektor</h1>
 
-## Funcionalidades
-- **Otimizações Windows** (todas reversíveis): plano de energia Vektor, Modo de Jogo, Game DVR off, HAGS,
-  prioridades MMCSS, rede sem limitação, Win32PrioritySeparation, aceleração do rato off,
-  CS2 com prioridade alta / GPU de alto desempenho / sem otimizações de ecrã inteiro, telemetria off.
-- **Mais otimizações**: power throttling off, otimizações para jogos em janela, efeitos visuais/transparência, apps em segundo plano, MPO off (correção de flicker).
-- **Windows 11 (1.1.0)**: atalhos de acessibilidade off (Shift 5×), Edge sem Startup Boost/segundo plano, Widgets off, Otimização da Entrega sem P2P.
-  Exigem terminar sessão, por isso nunca entram no "Otimizar agora".
-- **Limpeza** (análise antes de apagar): temporários, INetCache, WER, dumps, reciclagem, miniaturas, prefetch,
-  caches de shaders (drivers e Steam), cache web da Steam, Windows Update, Otimização da Entrega, instaladores de drivers, DNS.
-  Apps em segundo plano (lista fixa; nunca fecha Steam/CS2).
-- **Memória (estilo ISLC)**: serviço `VektorMemory` (o próprio `vektor.exe --memory-service`, LocalSystem, sem IPC)
-  que purga a lista de standby quando standby ≥ X MB e livre < Y MB. Configuração em `%ProgramData%\Vektor\memory.json`;
-  o serviço escreve contadores, um heartbeat e o último erro em `memory-status.json`, e reinicia sozinho se falhar.
-- **NVIDIA**: otimiza o perfil global com o NVIDIA Profile Inspector 3.0.2.1 (MIT, incluído no instalador via
-  `scripts/fetch-npi.sh`, hash verificado). Snapshot do perfil antes de alterar; "Repor original" reimporta-o em modo replace.
-- **CS2**: deteção de Steam/jogo/contas, presets de config (`vektor.cfg` + `autoexec.cfg` + `cs2_video.txt`),
-  opções de arranque recomendadas, arranque e benchmark de FPS (mapa Workshop 3240880604).
-- **Modo Jogo**: quando o `cs2.exe` arranca aplica (e reverte quando fecha): fechar/reabrir apps, afinidade de CPU
-  (automática por grupo L3 — X3D/2 CCDs — ou manual), resolução durante o jogo (ex. 4:3), digital vibrance com foco (AMD).
-- **NVIDIA CS2**: perfil dedicado ao `cs2.exe` (baixa latência, desempenho máximo, V-Sync off, texturas) além do global.
-- **Benchmarks**: histórico com comparação à primeira medição.
-- **Atualizações**: verificação automática e instalação num clique a partir dos releases do GitHub (instalador assinado, ver abaixo).
-- **App**: ícone na bandeja, fechar para a bandeja, arranque com o Windows (tarefa agendada elevada), exportar diagnóstico (.zip sem dados de conta Steam).
-- **Restaurar**: journal em `%ProgramData%\Vektor\journal.json` com o valor original de cada alteração e backups de ficheiros.
+<p align="center">
+  A Windows PC and Counter-Strike 2 optimizer.<br />
+  Everything runs on your machine, and every change can be undone.
+</p>
 
-## Arquitetura
-- Corre como administrador (manifesto `requireAdministrator`), sem serviço Windows permanente nem pipes.
-- Tudo local: sem servidor, sem contas, sem scripts remotos.
-- `src/api.ts` é o contrato entre UI e backend; `src-tauri/src/commands.rs` expõe os comandos.
-- Módulos: `system`, `win/*` (registo, energia, serviços, ficheiros), `tweaks/*`, `cs2/*`, `journal`, `undo`.
+<p align="center">
+  <a href="https://github.com/PedroGrilo/vektor/releases/latest"><img src="https://img.shields.io/github/v/release/PedroGrilo/vektor?label=download&color=28c39d" alt="Latest release" /></a>
+  <a href="https://github.com/PedroGrilo/vektor/actions/workflows/build-windows.yml"><img src="https://github.com/PedroGrilo/vektor/actions/workflows/build-windows.yml/badge.svg" alt="Windows build" /></a>
+</p>
 
-## Desenvolvimento
+![Vektor dashboard](docs/screenshots/dashboard.png)
+
+<sub>Screenshots show the app with demo data. The interface is in Portuguese (PT-PT).</sub>
+
+## What it does
+
+- **Tunes Windows for games** with 22 tweaks you switch on one by one, or with a single "Optimize now" button that only applies the low-risk ones.
+- **Frees disk space** by cleaning temporary files and caches, after showing you what it found.
+- **Keeps memory free while you play** with a small background service that clears the Windows standby list.
+- **Optimizes the NVIDIA driver profile**, globally and for CS2 only.
+- **Sets up Counter-Strike 2**: config presets, launch options and an FPS benchmark with history.
+- **Boosts the PC while CS2 is running** (closes chosen apps, pins CPU cores, switches resolution) and puts everything back when you quit.
+- **Undoes anything**: every change is recorded first, so one click restores the original value.
+
+## Download and install
+
+1. Open the [latest release](https://github.com/PedroGrilo/vektor/releases/latest) and download `Vektor_x.y.z_x64-setup.exe`.
+2. Run it. Windows SmartScreen will say "Unknown publisher" because the installer has no paid code-signing certificate: choose **More info → Run anyway**.
+3. Start Vektor. It asks for administrator rights each time, because it changes system settings.
+
+Requirements: Windows 10 or 11, 64-bit. The installer downloads the WebView2 runtime if your PC does not have it (Windows 11 already includes it).
+
+From version 1.1.0 on you do not need to come back here for new versions: Vektor checks for updates itself and installs them from **Definições → Atualizações**.
+
+## Screenshots
+
+| | |
+|---|---|
+| **Windows tweaks** — each one shows its risk and whether it needs a restart | **Memory** — what your RAM is doing and why the service purged or not |
+| ![Windows tweaks](docs/screenshots/optimize.png) | ![Memory page](docs/screenshots/memory.png) |
+| **NVIDIA** — global profile and a profile just for CS2 | **Game Mode** — applied while CS2 runs, reverted when it closes |
+| ![NVIDIA page](docs/screenshots/nvidia.png) | ![Game Mode page](docs/screenshots/game.png) |
+
+![Counter-Strike 2 page](docs/screenshots/cs2.png)
+
+## Features
+
+### Windows tweaks
+
+All 22 are reversible. Each is labelled low, medium or high risk and says if it needs a restart.
+
+| Area | Tweaks |
+|---|---|
+| Power | High-performance power plan without core parking or USB selective suspend; power throttling off |
+| GPU | Hardware-accelerated GPU scheduling; Multiplane Overlay off (a fix for flicker on some setups) |
+| System | Windows Game Mode; Game DVR capture off; multimedia scheduler priorities for games; foreground priority boost; optimizations for windowed games; visual effects and transparency off; background apps off |
+| Windows 11 | Widgets off; Edge startup boost and background mode off; Windows Update peer-to-peer sharing off |
+| Input | Mouse acceleration off; accessibility hotkeys off, so pressing Shift five times no longer kicks you out of the game |
+| Network | Multimedia network throttling off |
+| Privacy | Telemetry service off |
+| CS2 | High CPU priority, high-performance GPU and no fullscreen optimizations for `cs2.exe` |
+
+"Optimize now" on the dashboard only applies low-risk tweaks that need no restart. The rest stay opt-in.
+
+### Cleanup
+
+Scans 15 locations and shows the size of each before deleting anything: temporary files, the Windows internet cache, error reports, crash dumps, thumbnails, prefetch, shader caches (drivers and Steam), Steam web cache, Windows Update downloads, Delivery Optimization files, old driver installers, the recycle bin and the DNS cache. Items with side effects carry a warning, and the riskier ones are not selected by default.
+
+It can also close a fixed list of background apps. Steam and CS2 are never on that list.
+
+### Memory
+
+Windows keeps recently used files in a "standby" cache and sometimes fails to release it fast enough, which shows up as stutter. Vektor installs a small Windows service, `VektorMemory`, that clears the standby list when it grows past a size you choose **and** free memory drops below a limit you choose. This is the same idea as the well-known ISLC tool.
+
+The page shows how RAM is split between in use, modified, standby and free, and tells you which half of the rule is met right now. There is also a "Purge now" button.
+
+### NVIDIA
+
+Uses [NVIDIA Profile Inspector](https://github.com/Orbmu2k/nvidiaProfileInspector) (MIT, bundled) to set low latency mode, maximum-performance power management, high-performance texture filtering and an unlimited shader cache. There is a global profile and a separate one for `cs2.exe` that can also force V-Sync off. The original profile is saved before the first change and can be restored.
+
+### Game Mode
+
+A watcher notices when `cs2.exe` starts and, if you enabled it:
+
+- closes the apps you picked, and reopens them afterwards;
+- pins the game to the best CPU cores (automatic for Ryzen X3D and dual-CCD chips, or a manual mask);
+- switches the display resolution, for example to a 4:3 mode;
+- raises digital vibrance while the game has focus (AMD only for now).
+
+When the game exits, everything is put back. If Vektor crashes mid-session, it cleans up the next time it starts.
+
+### Counter-Strike 2
+
+- Finds Steam, the game and your accounts.
+- Four config presets (max FPS, competitive, visibility, low-end PC), written as `vektor.cfg` and hooked into `autoexec.cfg`, plus video settings.
+- Recommended launch options.
+- An FPS benchmark with average and 1% low, and a history that compares each run with your first one.
+- Tells you when Steam has a CS2 update pending.
+
+Vektor only writes the game's own config files. It never reads or writes game memory and injects nothing into the game.
+
+### Restore
+
+Before any change, the previous value goes into a journal at `%ProgramData%\Vektor\journal.json`, and files are backed up before being overwritten. You can revert a single tweak or everything at once, even after a restart.
+
+### The app itself
+
+- Lives in the system tray and can start with Windows.
+- In-app updates from GitHub releases (see below).
+- Exports a diagnostics `.zip` for support, with no Steam account names or IDs in it.
+- Stops polling CPU and RAM while minimized or in the tray, so it stays out of the way during a match.
+
+## Privacy and safety
+
+- No account, no server, no telemetry. Nothing about your PC leaves it.
+- The only network request Vektor makes on its own is the update check, to GitHub.
+- It runs as administrator because the settings it changes (system registry, services, power plans, driver profiles) require it.
+- Updates are verified with a digital signature before they are installed, so a tampered download is rejected.
+
+## Updates
+
+Vektor checks the latest GitHub release when it starts and every six hours. If there is a new version, a button appears in the sidebar and in **Definições → Atualizações**. Nothing is installed until you press it. You can turn the automatic check off on the same page.
+
+If you still have version 1.0.0, install 1.1.0 by hand once. Updates arrive in the app from then on.
+
+## Project status
+
+Vektor is young. The logic is covered by unit tests and every release is built by CI on Windows, but several Windows-specific paths still need testing on more hardware. Reports are welcome in [Issues](https://github.com/PedroGrilo/vektor/issues), especially about:
+
+- the `VektorMemory` service on different Windows builds;
+- NVIDIA profile changes across driver versions;
+- the in-app update flow;
+- CPU affinity detection on unusual processors;
+- digital vibrance on AMD cards and resolution switching on multi-monitor setups.
+
+## Build from source
+
+You need [Bun](https://bun.sh) and [Rust](https://rustup.rs). The full app only builds and runs on Windows.
+
 ```sh
 bun install
-./scripts/fetch-npi.sh   # NVIDIA Profile Inspector para src-tauri/resources/npi
-bun run dev          # UI no browser com dados de demonstração (src/mock.ts)
-bunx tauri dev       # app completa (Windows)
-bunx tauri build     # instalador NSIS (Windows)
+./scripts/fetch-npi.sh   # downloads NVIDIA Profile Inspector and checks its hash
+bun run dev              # interface only, in a browser, with demo data
+bunx tauri dev           # the full app (Windows)
+bunx tauri build         # the installer (Windows; needs the updater signing key)
 ```
-No macOS: `cd src-tauri && cargo test --lib && cargo clippy --target x86_64-pc-windows-msvc`
-(precisa de `rustup target add x86_64-pc-windows-msvc` e `llvm-rc` do Homebrew `llvm` no PATH).
 
-O workflow `.github/workflows/build-windows.yml` compila o instalador num runner Windows.
+On macOS or Linux you can still work on the interface with `bun run dev`, run the tests with `cd src-tauri && cargo test --lib`, and type-check the Windows code with `cargo clippy --target x86_64-pc-windows-msvc --lib` (needs the Rust Windows target and `llvm-rc`).
 
-## Interface
-- Paleta em `src/styles.css` (`--ink`, `--pine`, `--teal`, `--mint`, `--frost`); todas as outras cores derivam destas cinco.
-- Vidro (blur) só em barras e botões; os painéis são opacos de propósito, para o scroll e os repaints ficarem baratos.
-- Sem biblioteca de animação. O polling pára quando a janela está minimizada ou na bandeja (`src/visibility.ts`).
+### How it is put together
 
-## Atualizações e releases
-A app usa o updater do Tauri: lê `latest.json` do último release e só instala se a assinatura do instalador
-corresponder à chave pública em `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`).
+- **Tauri 2**: a Rust backend in `src-tauri/` and a React interface in `src/`.
+- `src/api.ts` is the contract between the two. `src-tauri/src/commands.rs` exposes the commands; the logic lives in modules (`tweaks`, `cleanup`, `memory`, `nvidia`, `session`, `cs2`, `journal`, `updates`).
+- `src/mock.ts` provides demo data so the interface runs in a plain browser.
+- The memory service is `vektor.exe` itself, started with `--memory-service`. It talks to the app through two small JSON files, with no open ports or pipes.
+- Colours come from five values in `src/styles.css`; everything else is derived from them. The glass effect is used on bars and buttons only, to keep the interface light.
 
-Para lançar uma versão:
-1. Subir a versão em `package.json`, `src-tauri/Cargo.toml` e `src-tauri/tauri.conf.json` (o CI falha se não coincidirem com a tag).
-2. Escrever `RELEASE_NOTES.md` (aparece no release e dentro da app).
-3. `git tag vX.Y.Z && git push --tags` — o CI compila, assina, gera `latest.json` e publica o release.
+### Releasing
 
-Requisitos:
-- Secret `TAURI_SIGNING_PRIVATE_KEY` no repositório (a chave privada gerada com `bunx tauri signer generate`;
-  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` só se a chave tiver password). **Perder a chave privada impede atualizar as instalações existentes.**
-- Os ficheiros do release têm de ser descarregáveis sem autenticação: o repositório (ou um repositório só de releases,
-  mudando `plugins.updater.endpoints` e o URL no workflow) tem de ser público.
-- O serviço VektorMemory corre a partir do `vektor.exe`; o instalador pára-o antes de substituir o ficheiro e retoma-o depois (`src-tauri/windows/hooks.nsh`).
+1. Set the same version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. CI fails if they differ from the tag.
+2. Write `RELEASE_NOTES.md`. It becomes the release text and is shown inside the app.
+3. Push a tag: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
 
-## Por validar num PC Windows real
-- `powercfg /duplicatescheme` e parsing da saída localizada; serviços via SCM como administrador.
-- VRAM quando `qwMemorySize` é REG_BINARY; HAGS não verifica suporte da GPU.
-- CS2: `map_workshop` via `+exec`, formato `[VProf] FPS: Avg=…, P1=…`, valores de vídeo HDR/FSR, `cl_crosshair_t`, `cl_radar_scale`.
-- Serviço VektorMemory: instalar/arrancar/parar via SCM, privilégio SeProfileSingleProcessPrivilege e purga reais;
-  ações de recuperação (reinício após falha).
-- NVIDIA: `-exportCustomized`/`-silentImport` com driver real e nome do perfil global ("Base Profile"). As flags e o formato
-  `.nip` foram conferidos com o código do Profile Inspector 3.0.2.1; falta confirmar com um driver real que valores iguais
-  ao predefinido ficam fora da exportação (a verificação aceita os dois casos).
-- Atualizações: fluxo completo (verificar, transferir, instalador passivo, reinício) entre duas versões reais;
-  paragem/retoma do serviço pelo instalador.
-- Vidro (backdrop-filter) e pausa do polling na bandeja no WebView2.
-- Limpeza: ficheiros bloqueados do Windows Update/Otimização da Entrega; Reciclagem com a app elevada.
-- Modo jogo: SetProcessAffinityMask no cs2.exe, reabertura via explorer.exe sem elevação, heurística X3D.
-- Vibrance AMD (ADL) e troca de resolução; schtasks; Ambiente de Trabalho redirecionado para OneDrive.
+CI builds the installer, signs it, generates the `latest.json` the app reads, and publishes the release. Signing uses the `TAURI_SIGNING_PRIVATE_KEY` repository secret. Its public half is in `src-tauri/tauri.conf.json`. If that private key is lost, existing installs can no longer be updated.
+
+## Credits
+
+By **Kicas** aka **Pedro Grilo** — [github.com/PedroGrilo](https://github.com/PedroGrilo)
+
+Third-party software: [NVIDIA Profile Inspector](https://github.com/Orbmu2k/nvidiaProfileInspector) by Orbmu2k, MIT licence, downloaded at build time and shipped with the installer.
+
+Vektor is an independent project. It is not affiliated with or endorsed by Valve, NVIDIA, AMD or Microsoft. Counter-Strike is a trademark of Valve Corporation.
