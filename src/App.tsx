@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { ArrowUpCircle, Crosshair, Rocket, Settings as SettingsIcon, Gauge as GaugeIcon, History, MemoryStick, Minus, MonitorCog, Square, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowUpCircle, Crosshair, Gamepad2, Network as NetworkIcon, Power, Rocket, Settings as SettingsIcon, Gauge as GaugeIcon, History, MemoryStick, Minus, MonitorCog, Square, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { inTauri } from "./api";
 import { backend } from "./mock";
@@ -13,17 +13,23 @@ import Cleanup from "./pages/Cleanup";
 import Memory from "./pages/Memory";
 import Nvidia from "./pages/Nvidia";
 import GameMode from "./pages/GameMode";
+import Games from "./pages/Games";
+import StartupPage from "./pages/Startup";
+import Network from "./pages/Network";
 import SettingsPage from "./pages/Settings";
 
-export type PageId = "dashboard" | "optimize" | "cleanup" | "memory" | "nvidia" | "game" | "cs2" | "restore" | "settings";
+export type PageId = "dashboard" | "optimize" | "startup" | "cleanup" | "memory" | "network" | "nvidia" | "games" | "game" | "cs2" | "restore" | "settings";
 
 const NAV: { id: PageId; label: string; icon: typeof GaugeIcon; section?: string }[] = [
   { id: "dashboard", label: "Painel", icon: GaugeIcon, section: "Sistema" },
   { id: "optimize", label: "Otimizações", icon: SlidersHorizontal },
+  { id: "startup", label: "Arranque", icon: Power },
   { id: "cleanup", label: "Limpeza", icon: Trash2 },
   { id: "memory", label: "Memória", icon: MemoryStick },
+  { id: "network", label: "Rede", icon: NetworkIcon },
   { id: "nvidia", label: "NVIDIA", icon: MonitorCog },
-  { id: "game", label: "Modo Jogo", icon: Rocket, section: "Jogo" },
+  { id: "games", label: "Jogos", icon: Gamepad2, section: "Jogo" },
+  { id: "game", label: "Modo Jogo", icon: Rocket },
   { id: "cs2", label: "Counter-Strike 2", icon: Crosshair },
   { id: "restore", label: "Restaurar", icon: History, section: "Segurança" },
   { id: "settings", label: "Definições", icon: SettingsIcon },
@@ -70,7 +76,9 @@ function SidebarStatus() {
     <div className="status-card">
       <div className="row between" style={{ marginBottom: 6 }}>
         <span className="label">Estado</span>
-        {stats?.cs2Running ? <span className="chip on"><span className="dot" />CS2 ativo</span> : <span className="chip">em espera</span>}
+        {stats?.activeGame ? <span className="chip on"><span className="dot" />{stats.activeGame}</span>
+          : stats?.cs2Running ? <span className="chip on"><span className="dot" />CS2 ativo</span>
+          : <span className="chip">em espera</span>}
       </div>
       <div>CPU <b>{stats ? `${stats.cpuUsage.toFixed(0)}%` : "—"}</b> · RAM <b>{stats ? `${stats.ramUsedGb.toFixed(1)} GB` : "—"}</b></div>
     </div>
@@ -134,7 +142,10 @@ export default function App() {
             {page === "cleanup" && <Cleanup />}
             {page === "memory" && <Memory />}
             {page === "nvidia" && <Nvidia />}
-            {page === "game" && <GameMode />}
+            {page === "game" && <GameMode go={setPage} />}
+            {page === "games" && <Games />}
+            {page === "startup" && <StartupPage />}
+            {page === "network" && <Network />}
             {page === "cs2" && <Cs2 />}
             {page === "settings" && <SettingsPage />}
             {page === "restore" && <Restore />}

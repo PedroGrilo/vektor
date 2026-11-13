@@ -23,6 +23,11 @@ pub fn subkeys(hive: Hive, key: &str) -> Vec<String> {
     imp::subkeys(hive, key)
 }
 
+/// Names of the values directly under `key` (empty when the key is missing).
+pub fn value_names(hive: Hive, key: &str) -> Vec<String> {
+    imp::value_names(hive, key)
+}
+
 /// Snapshot the current value into the journal under `tweak_id`, then write.
 pub fn set_journaled(tweak_id: &str, hive: Hive, key: &str, name: &str, value: &RegValue) -> Result<()> {
     let previous = read(hive, key, name)?;
@@ -79,6 +84,10 @@ mod imp {
             RegType::REG_SZ | RegType::REG_EXPAND_SZ => {
                 RegValue::Sz(k.get_value::<String, _>(name).map_err(|e| ctx(e, key, name))?)
             }
+            RegType::REG_MULTI_SZ => {
+                RegValue::MultiSz(k.get_value::<Vec<String>, _>(name).map_err(|e| ctx(e, key, name))?)
+            }
+            RegType::REG_BINARY => RegValue::Binary(b.to_vec()),
             // Vektor only snapshots types it can restore exactly.
             other => {
                 return Err(Error::msg(format!(
@@ -97,6 +106,11 @@ mod imp {
             RegValue::Dword(v) => k.set_value(name, v),
             RegValue::Qword(v) => k.set_value(name, v),
             RegValue::Sz(v) => k.set_value(name, v),
+            RegValue::MultiSz(v) => k.set_value(name, v),
+            RegValue::Binary(v) => k.set_raw_value(
+                name,
+                &winreg::RegValue { bytes: v.clone().into(), vtype: RegType::REG_BINARY },
+            ),
         };
         r.map_err(|e| ctx(e, key, name))
     }
@@ -112,6 +126,13 @@ mod imp {
             Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
             Err(e) => Err(ctx(e, key, name)),
         }
+    }
+
+    pub fn value_names(hive: Hive, key: &str) -> Vec<String> {
+        root(hive)
+            .open_subkey_with_flags(key, KEY_READ | KEY_WOW64_64KEY)
+            .map(|k| k.enum_values().filter_map(|r| r.ok()).map(|(n, _)| n).collect())
+            .unwrap_or_default()
     }
 
     pub fn subkeys(hive: Hive, key: &str) -> Vec<String> {
@@ -137,6 +158,9 @@ mod imp {
         Err(Error::Unsupported)
     }
     pub fn subkeys(_: Hive, _: &str) -> Vec<String> {
+        Vec::new()
+    }
+    pub fn value_names(_: Hive, _: &str) -> Vec<String> {
         Vec::new()
     }
 }

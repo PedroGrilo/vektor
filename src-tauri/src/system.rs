@@ -57,6 +57,8 @@ pub struct LiveStats {
     pub ram_total_gb: f64,
     pub process_count: u32,
     pub cs2_running: bool,
+    /// Game of the active Game Mode session, if any.
+    pub active_game: Option<String>,
 }
 
 const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
@@ -112,6 +114,7 @@ pub fn live_stats() -> Result<LiveStats> {
         ram_total_gb: round1(sys.total_memory() as f64 / GIB),
         process_count: sys.processes().len() as u32,
         cs2_running,
+        active_game: crate::session::active_game(),
     })
 }
 

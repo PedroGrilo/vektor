@@ -19,6 +19,7 @@ pub enum Category {
     Input,
     Privacy,
     Game,
+    Services,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -42,6 +43,9 @@ pub struct TweakInfo {
     pub applied: bool,
     pub available: bool,
     pub reason: Option<String>,
+    /// Question shown before applying ("Usas impressora?"). Tweaks with a
+    /// question are never part of the one-click boost.
+    pub question: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -65,8 +69,7 @@ pub struct ProcInfo {
 
 const MMCSS_PROFILE: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile";
 const MMCSS_GAMES: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games";
-const CS2_IFEO: &str =
-    r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\cs2.exe\PerfOptions";
+const IFEO: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
 const GPU_PREFS: &str = r"Software\Microsoft\DirectX\UserGpuPreferences";
 const COMPAT_LAYERS: &str = r"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers";
 const FSO_FLAG: &str = "DISABLEDXMAXIMIZEDWINDOWEDMODE";
@@ -96,12 +99,95 @@ fn merge_dx_setting(existing: &str, key: &str, value: &str) -> String {
     out
 }
 
+// ---------- per-executable tweaks (CS2 and any game in the library) ----------
+
+/// Windows starts `exe_name` (file name only) with High CPU priority.
+pub fn set_exe_high_priority(id: &str, exe_name: &str) -> Result<()> {
+    let key = format!(r"{IFEO}\{exe_name}\PerfOptions");
+    set_all(id, &[(Hive::Hklm, key.as_str(), "CpuPriorityClass", d(3))])
+}
+
+/// Per-app graphics preference: high-performance GPU for `exe_path` (full path).
+pub fn set_exe_gpu_high_performance(id: &str, exe_path: &str) -> Result<()> {
+    set_all(id, &[(Hive::Hkcu, GPU_PREFS, exe_path, sz("GpuPreference=2;"))])
+}
+
+/// Compatibility flag that turns off fullscreen optimisations for `exe_path`,
+/// keeping any flags the user already set.
+pub fn set_exe_fso_off(id: &str, exe_path: &str) -> Result<()> {
+    let value = match registry::read(Hive::Hkcu, COMPAT_LAYERS, exe_path)? {
+        Some(RegValue::Sz(s)) if s.contains(FSO_FLAG) => s,
+        Some(RegValue::Sz(s)) if !s.trim().is_empty() => {
+            let s = s.trim();
+            if s.starts_with('~') { format!("{s} {FSO_FLAG}") } else { format!("~ {s} {FSO_FLAG}") }
+        }
+        _ => format!("~ {FSO_FLAG}"),
+    };
+    set_all(id, &[(Hive::Hkcu, COMPAT_LAYERS, exe_path, RegValue::Sz(value))])
+}
+
+/// Disable every listed service that exists, in order (dependents first).
+/// A service that refuses to stop now is still disabled and stops at the next restart.
+fn disable_services(id: &str, names: &[&str]) -> Result<()> {
+    let mut any = false;
+    for name in names {
+        if services::exists(name) {
+            services::disable_journaled_lenient(id, name)?;
+            any = true;
+        }
+    }
+    if any { Ok(()) } else { Err(Error::Unavailable("nenhum destes serviços existe neste sistema".into())) }
+}
+
+const NET_CLASS: &str = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}";
+/// PnPCapabilities flag that clears "Allow the computer to turn off this device to save power".
+const PNP_NO_POWER_SAVING: u32 = 0x18;
+
+fn dword_at(key: &str, name: &str) -> Option<u32> {
+    match registry::read(Hive::Hklm, key, name) {
+        Ok(Some(RegValue::Dword(v))) => Some(v),
+        _ => None,
+    }
+}
+
+/// Physical Ethernet (6) and Wi-Fi (71) adapters: their class subkeys.
+fn physical_adapters() -> Vec<String> {
+    registry::subkeys(Hive::Hklm, NET_CLASS)
+        .into_iter()
+        .filter(|k| k.len() == 4 && k.chars().all(|c| c.is_ascii_digit()))
+        .map(|k| format!(r"{NET_CLASS}\{k}"))
+        .filter(|key| {
+            let iftype = dword_at(key, "*IfType");
+            let virtual_ = dword_at(key, "Characteristics").is_some_and(|c| c & 0x1 != 0);
+            matches!(iftype, Some(6) | Some(71)) && !virtual_
+        })
+        .collect()
+}
+
+fn nic_power_saving_off(id: &str) -> Result<()> {
+    let adapters = physical_adapters();
+    if adapters.is_empty() {
+        return Err(Error::Unavailable("nenhuma placa de rede física encontrada".into()));
+    }
+    for key in &adapters {
+        registry::set_journaled(id, Hive::Hklm, key, "PnPCapabilities", &d(PNP_NO_POWER_SAVING))?;
+        // Energy-Efficient Ethernet / "Green Ethernet": only where the driver exposes them.
+        for name in ["*EEE", "EnableGreenEthernet"] {
+            if let Ok(Some(RegValue::Sz(_))) = registry::read(Hive::Hklm, key, name) {
+                registry::set_journaled(id, Hive::Hklm, key, name, &sz("0"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// What a tweak needs to be applicable.
 #[derive(Clone, Copy)]
 enum Needs {
     Nothing,
     Cs2,
     Service(&'static str),
+    AnyService(&'static [&'static str]),
 }
 
 struct Tweak {
@@ -113,6 +199,7 @@ struct Tweak {
     requires_reboot: bool,
     needs: Needs,
     apply: fn(&str) -> Result<()>,
+    question: Option<&'static str>,
 }
 
 fn d(v: u32) -> RegValue {
@@ -147,6 +234,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| power::activate_vektor_plan(id),
     },
     Tweak {
@@ -157,6 +245,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             set_all(id, &[
                 (Hive::Hkcu, r"Software\Microsoft\GameBar", "AutoGameModeEnabled", d(1)),
@@ -172,6 +261,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             set_all(id, &[
                 (Hive::Hkcu, r"System\GameConfigStore", "GameDVR_Enabled", d(0)),
@@ -188,6 +278,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Medium,
         requires_reboot: true,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             set_all(id, &[(Hive::Hklm, r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode", d(2))])
         },
@@ -201,6 +292,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             set_all(id, &[
                 (Hive::Hklm, MMCSS_PROFILE, "SystemResponsiveness", d(10)),
@@ -219,6 +311,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| set_all(id, &[(Hive::Hklm, MMCSS_PROFILE, "NetworkThrottlingIndex", d(0xFFFF_FFFF))]),
     },
     Tweak {
@@ -229,6 +322,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             set_all(id, &[(
                 Hive::Hklm,
@@ -247,6 +341,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: true,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             set_all(id, &[
                 (Hive::Hkcu, r"Control Panel\Mouse", "MouseSpeed", sz("0")),
@@ -263,7 +358,8 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Nothing,
-        apply: |id| set_all(id, &[(Hive::Hklm, CS2_IFEO, "CpuPriorityClass", d(3))]),
+        question: None,
+        apply: |id| set_exe_high_priority(id, "cs2.exe"),
     },
     Tweak {
         id: "cs2-gpu-high-performance",
@@ -273,10 +369,8 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Cs2,
-        apply: |id| {
-            let exe = cs2_exe()?;
-            set_all(id, &[(Hive::Hkcu, GPU_PREFS, exe.as_str(), sz("GpuPreference=2;"))])
-        },
+        question: None,
+        apply: |id| set_exe_gpu_high_performance(id, &cs2_exe()?),
     },
     Tweak {
         id: "cs2-fso-off",
@@ -287,19 +381,8 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Cs2,
-        apply: |id| {
-            let exe = cs2_exe()?;
-            // Keep any compatibility flags the user already set.
-            let value = match registry::read(Hive::Hkcu, COMPAT_LAYERS, &exe)? {
-                Some(RegValue::Sz(s)) if s.contains(FSO_FLAG) => s,
-                Some(RegValue::Sz(s)) if !s.trim().is_empty() => {
-                    let s = s.trim();
-                    if s.starts_with('~') { format!("{s} {FSO_FLAG}") } else { format!("~ {s} {FSO_FLAG}") }
-                }
-                _ => format!("~ {FSO_FLAG}"),
-            };
-            set_all(id, &[(Hive::Hkcu, COMPAT_LAYERS, exe.as_str(), RegValue::Sz(value))])
-        },
+        question: None,
+        apply: |id| set_exe_fso_off(id, &cs2_exe()?),
     },
     Tweak {
         id: "telemetry-off",
@@ -310,6 +393,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Service("DiagTrack"),
+        question: None,
         apply: |id| services::disable_journaled(id, "DiagTrack"),
     },
     Tweak {
@@ -321,6 +405,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: true,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             set_all(id, &[(
                 Hive::Hklm,
@@ -339,6 +424,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             let current = match registry::read(Hive::Hkcu, GPU_PREFS, DX_GLOBAL)? {
                 Some(RegValue::Sz(s)) => s,
@@ -357,6 +443,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: true,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             set_all(id, &[(
                 Hive::Hkcu,
@@ -374,6 +461,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| set_all(id, &[(Hive::Hkcu, PERSONALIZE, "EnableTransparency", d(0))]),
     },
     Tweak {
@@ -385,6 +473,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: false,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             set_all(id, &[(
                 Hive::Hkcu,
@@ -403,6 +492,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Medium,
         requires_reboot: true,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| set_all(id, &[(Hive::Hklm, r"SOFTWARE\Microsoft\Windows\Dwm", "OverlayTestMode", d(5))]),
     },
     // ---- 1.1.0: background interference on current Windows 11 builds ----
@@ -418,6 +508,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: true,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             // Flags with the hotkey and confirmation bits cleared (defaults: 510, 126, 62).
             set_all(id, &[
@@ -437,6 +528,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: true,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             set_all(id, &[
                 (Hive::Hklm, EDGE_POLICY, "StartupBoostEnabled", d(0)),
@@ -453,6 +545,7 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: true,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| set_all(id, &[(Hive::Hklm, r"SOFTWARE\Policies\Microsoft\Dsh", "AllowNewsAndInterests", d(0))]),
     },
     Tweak {
@@ -465,10 +558,124 @@ static TWEAKS: &[Tweak] = &[
         risk: Risk::Low,
         requires_reboot: true,
         needs: Needs::Nothing,
+        question: None,
         apply: |id| {
             // 0 = HTTP only. Never 100 ("bypass"): deprecated on Windows 11 and can break downloads.
             set_all(id, &[(Hive::Hklm, r"SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization", "DODownloadMode", d(0))])
         },
+    },
+    // ---- 1.2.0: network adapter ----
+    Tweak {
+        id: "nic-power-saving-off",
+        category: Category::Network,
+        title: "Placa de rede sem poupança de energia",
+        description: "Impede o Windows de desligar a placa de rede (cabo e Wi-Fi) para poupar energia e desliga a \
+                      Ethernet de baixo consumo (EEE) onde o driver a tem. Evita quebras e picos de latência depois \
+                      de algum tempo parado. Num portátil, gasta um pouco mais de bateria.",
+        risk: Risk::Low,
+        requires_reboot: true,
+        needs: Needs::Nothing,
+        question: None,
+        apply: nic_power_saving_off,
+    },
+    // ---- 1.2.0: services, one question each ----
+    // Never in the one-click boost (they have a question). Listed dependents first.
+    Tweak {
+        id: "svc-printing-off",
+        category: Category::Services,
+        title: "Desligar serviços de impressão",
+        description: "Desliga o Spooler de impressão e as notificações de impressora. Deixas de poder imprimir, \
+                      incluindo “Imprimir para PDF”. Digitalizar continua a funcionar.",
+        risk: Risk::Medium,
+        requires_reboot: false,
+        needs: Needs::AnyService(&["PrintNotify", "Spooler"]),
+        question: Some("Usas impressora ou “Imprimir para PDF”?"),
+        apply: |id| disable_services(id, &["PrintNotify", "Spooler"]),
+    },
+    Tweak {
+        id: "svc-fax-off",
+        category: Category::Services,
+        title: "Desligar o serviço de Fax",
+        description: "Desliga o serviço de Fax do Windows.",
+        risk: Risk::Low,
+        requires_reboot: false,
+        needs: Needs::Service("Fax"),
+        question: Some("Envias ou recebes fax pelo PC?"),
+        apply: |id| disable_services(id, &["Fax"]),
+    },
+    Tweak {
+        id: "svc-xbox-off",
+        category: Category::Services,
+        title: "Desligar serviços Xbox",
+        description: "Desliga a autenticação Xbox Live, os saves na nuvem, a rede Xbox e os acessórios Xbox. \
+                      Jogos da Xbox app ou do Game Pass deixam de entrar na conta e de sincronizar saves, \
+                      e os comandos Xbox sem fios podem deixar de funcionar.",
+        risk: Risk::Medium,
+        requires_reboot: false,
+        needs: Needs::AnyService(&["XblAuthManager", "XblGameSave", "XboxNetApiSvc", "XboxGipSvc"]),
+        question: Some("Usas a app Xbox, o Game Pass ou um comando Xbox sem fios?"),
+        apply: |id| disable_services(id, &["XblGameSave", "XboxNetApiSvc", "XblAuthManager", "XboxGipSvc"]),
+    },
+    Tweak {
+        id: "svc-bluetooth-off",
+        category: Category::Services,
+        title: "Desligar Bluetooth",
+        description: "Desliga os serviços de Bluetooth. Auscultadores, comandos, ratos e teclados Bluetooth \
+                      deixam de ligar. Dispositivos com recetor USB próprio não são afetados.",
+        risk: Risk::Medium,
+        requires_reboot: false,
+        needs: Needs::AnyService(&["BTAGService", "BthAvctpSvc", "bthserv"]),
+        question: Some("Usas algum dispositivo Bluetooth?"),
+        apply: |id| disable_services(id, &["BTAGService", "BthAvctpSvc", "bthserv"]),
+    },
+    Tweak {
+        id: "svc-maps-off",
+        category: Category::Services,
+        title: "Desligar gestor de mapas transferidos",
+        description: "Desliga o serviço que atualiza mapas offline da app Mapas em segundo plano.",
+        risk: Risk::Low,
+        requires_reboot: false,
+        needs: Needs::Service("MapsBroker"),
+        question: Some("Usas mapas offline na app Mapas do Windows?"),
+        apply: |id| disable_services(id, &["MapsBroker"]),
+    },
+    Tweak {
+        id: "svc-search-index-off",
+        category: Category::Services,
+        title: "Desligar indexação da pesquisa",
+        description: "Desliga o Windows Search, que indexa ficheiros e emails em segundo plano (disco e CPU). \
+                      A pesquisa de ficheiros no menu Iniciar e no Explorador fica muito mais lenta, \
+                      e a pesquisa do Outlook pode deixar de funcionar.",
+        risk: Risk::Medium,
+        requires_reboot: false,
+        needs: Needs::Service("WSearch"),
+        question: Some("Pesquisas ficheiros no menu Iniciar ou emails no Outlook?"),
+        apply: |id| disable_services(id, &["WSearch"]),
+    },
+    Tweak {
+        id: "svc-sysmain-off",
+        category: Category::Services,
+        title: "Desligar SysMain (Superfetch)",
+        description: "Desliga o SysMain, que pré-carrega na RAM as apps que mais usas. Num SSD a diferença é \
+                      pequena e evita uso de disco em segundo plano; num disco rígido (HDD) as apps passam \
+                      a abrir mais devagar.",
+        risk: Risk::Medium,
+        requires_reboot: false,
+        needs: Needs::Service("SysMain"),
+        question: Some("O Windows está instalado num disco rígido (HDD) em vez de um SSD?"),
+        apply: |id| disable_services(id, &["SysMain"]),
+    },
+    Tweak {
+        id: "svc-biometrics-off",
+        category: Category::Services,
+        title: "Desligar serviço de biometria",
+        description: "Desliga o Serviço Biométrico do Windows. O Windows Hello com rosto ou impressão digital \
+                      deixa de funcionar; o PIN e a palavra-passe continuam.",
+        risk: Risk::Medium,
+        requires_reboot: false,
+        needs: Needs::Service("WbioSrvc"),
+        question: Some("Entras no Windows com o rosto ou a impressão digital?"),
+        apply: |id| disable_services(id, &["WbioSrvc"]),
     },
 ];
 
@@ -489,6 +696,9 @@ fn unavailable_reason(t: &Tweak) -> Option<String> {
             .is_none()
             .then(|| "CS2 não encontrado neste PC".into()),
         Needs::Service(name) => (!services::exists(name)).then(|| format!("Serviço {name} não existe neste sistema")),
+        Needs::AnyService(names) => {
+            (!names.iter().any(|n| services::exists(n))).then(|| "Serviços não existem neste sistema".into())
+        }
     }
 }
 
@@ -504,7 +714,13 @@ fn info(t: &Tweak) -> TweakInfo {
         applied: journal::is_applied(t.id),
         available: reason.is_none(),
         reason,
+        question: t.question.map(Into::into),
     }
+}
+
+/// Title of a catalog tweak, for the Restore page.
+pub fn title_of(id: &str) -> Option<&'static str> {
+    TWEAKS.iter().find(|t| t.id == id).map(|t| t.title)
 }
 
 pub fn list() -> Vec<TweakInfo> {
@@ -560,6 +776,13 @@ mod tests {
             merge_dx_setting("swapeffectupgradeenable=0;;SwapEffectUpgradeEnable=0;", "SwapEffectUpgradeEnable", "1"),
             "SwapEffectUpgradeEnable=1;"
         );
+    }
+
+    #[test]
+    fn service_tweaks_always_ask() {
+        for t in TWEAKS.iter().filter(|t| matches!(t.category, Category::Services)) {
+            assert!(t.question.is_some(), "{} has no question", t.id);
+        }
     }
 
     #[test]

@@ -34,10 +34,12 @@ export interface LiveStats {
   ramTotalGb: number;
   processCount: number;
   cs2Running: boolean;
+  /** game of the active Game Mode session */
+  activeGame: string | null;
 }
 
 // ---------- tweaks ----------
-export type TweakCategory = "power" | "gpu" | "system" | "network" | "input" | "privacy" | "game";
+export type TweakCategory = "power" | "gpu" | "system" | "network" | "input" | "privacy" | "game" | "services";
 export type Risk = "low" | "medium" | "high";
 export interface TweakInfo {
   id: string;
@@ -50,6 +52,8 @@ export interface TweakInfo {
   available: boolean;
   /** why not available, if available === false */
   reason: string | null;
+  /** asked before applying ("Usas impressora?"); never in the one-click boost */
+  question: string | null;
 }
 export interface CleanReport {
   freedBytes: number;
@@ -196,8 +200,15 @@ export interface DisplayInfo {
   current: DisplayMode;
   modes: DisplayMode[];
 }
+export interface SessionGame {
+  /** executable file name, lowercase */
+  exe: string;
+  name: string;
+  /** apply resolution and vibrance to this game */
+  display: boolean;
+}
 export interface SessionConfig {
-  /** apply the session automatically whenever cs2.exe starts */
+  /** apply the session automatically whenever a watched game starts */
   enabled: boolean;
   /** process names (from the background-apps allowlist) closed during the game */
   closeApps: string[];
@@ -208,8 +219,10 @@ export interface SessionConfig {
   affinityMask: string | null;
   /** resolution for the primary display while playing; null = unchanged */
   resolution: DisplayMode | null;
-  /** digital vibrance 0..100 while CS2 has focus; null = off (50 = driver default) */
+  /** digital vibrance 0..100 while the game has focus; null = off (50 = driver default) */
   vibrance: number | null;
+  /** games that start a session */
+  games: SessionGame[];
 }
 export interface CcdGroup {
   id: number;
@@ -228,7 +241,9 @@ export interface SessionStatus {
   active: boolean;
   /** ISO timestamp */
   since: string | null;
-  cs2Pid: number | null;
+  pid: number | null;
+  /** name of the game of the current session */
+  game: string | null;
   /** PT-PT list of what the current session did */
   actions: string[];
   config: SessionConfig;
@@ -238,6 +253,72 @@ export interface VibranceInfo {
   vendor: "nvidia" | "amd" | "other";
   /** current level 0..100 on the primary display */
   current: number | null;
+}
+
+// ---------- game library ----------
+export type GameSource = "steam" | "epic" | "gog" | "ubisoft" | "riot" | "manual";
+export type GameTweakKind = "priority" | "gpu" | "fso";
+export interface GameInfo {
+  id: string;
+  name: string;
+  source: GameSource;
+  installDir: string | null;
+  /** chosen executable (full path) */
+  exe: string | null;
+  /** likely executables, best first */
+  candidates: string[];
+  tweaks: { priority: boolean; gpu: boolean; fso: boolean };
+  /** watched by Game Mode */
+  inSession: boolean;
+  running: boolean;
+}
+export interface RunningProcess {
+  name: string;
+  exe: string;
+  memoryMb: number;
+}
+
+// ---------- restore points & journal ----------
+export interface RestorePoint {
+  description: string;
+  /** ISO timestamp */
+  date: string;
+}
+export interface RestorePointResult {
+  created: boolean;
+  message: string;
+  last: RestorePoint | null;
+}
+export interface Change {
+  id: string;
+  title: string;
+}
+
+// ---------- startup apps ----------
+export interface StartupEntry {
+  id: string;
+  name: string;
+  command: string;
+  location: string;
+  enabled: boolean;
+  changedByVektor: boolean;
+  protected: boolean;
+  hint: string | null;
+}
+
+// ---------- network ----------
+export interface DnsResult {
+  /** provider id, or "current" */
+  id: string;
+  name: string;
+  servers: string[];
+  latencyMs: number | null;
+  /** 0..1 share of queries answered */
+  success: number;
+}
+export interface DnsStatus {
+  current: string[];
+  applied: string | null;
 }
 
 // ---------- benchmarks ----------
@@ -328,6 +409,29 @@ export const api = {
   benchHistory: () => invoke<BenchRecord[]>("bench_history"),
   benchDelete: (id: string) => invoke<BenchRecord[]>("bench_delete", { id }),
   benchSetNote: (id: string, note: string) => invoke<BenchRecord[]>("bench_set_note", { id, note }),
+
+  gamesList: (refresh: boolean) => invoke<GameInfo[]>("games_list", { refresh }),
+  gamesSetExe: (id: string, exe: string) => invoke<GameInfo>("games_set_exe", { id, exe }),
+  gamesAdd: (exe: string, name: string | null) => invoke<GameInfo>("games_add", { exe, name }),
+  gamesRemove: (id: string) => invoke<void>("games_remove", { id }),
+  gamesUnhideAll: () => invoke<void>("games_unhide_all"),
+  gamesSetTweak: (id: string, kind: GameTweakKind, on: boolean) => invoke<GameInfo>("games_set_tweak", { id, kind, on }),
+  gamesOptimize: (id: string, on: boolean) => invoke<GameInfo>("games_optimize", { id, on }),
+  gamesSetSession: (id: string, on: boolean) => invoke<GameInfo>("games_set_session", { id, on }),
+  gamesRunningProcesses: () => invoke<RunningProcess[]>("games_running_processes"),
+
+  restorePointLast: () => invoke<RestorePoint | null>("restore_point_last"),
+  restorePointCreate: (enableProtection: boolean) => invoke<RestorePointResult>("restore_point_create", { enableProtection }),
+  listChanges: () => invoke<Change[]>("list_changes"),
+  revertChange: (id: string) => invoke<void>("revert_change", { id }),
+
+  startupList: () => invoke<StartupEntry[]>("startup_list"),
+  startupSetEnabled: (id: string, enabled: boolean) => invoke<StartupEntry[]>("startup_set_enabled", { id, enabled }),
+
+  dnsTest: () => invoke<DnsResult[]>("dns_test"),
+  dnsStatus: () => invoke<DnsStatus>("dns_status"),
+  dnsApply: (provider: string) => invoke<DnsStatus>("dns_apply", { provider }),
+  dnsRevert: () => invoke<DnsStatus>("dns_revert"),
 
   appSettings: () => invoke<AppSettings>("app_settings"),
   appSetSettings: (settings: AppSettings) => invoke<AppSettings>("app_set_settings", { settings }),

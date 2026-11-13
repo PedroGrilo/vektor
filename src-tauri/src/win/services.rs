@@ -41,6 +41,19 @@ pub fn disable_journaled(tweak_id: &str, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Like [`disable_journaled`], but a service that will not stop now (running
+/// dependents, stop pending) is left disabled and stops at the next restart.
+pub fn disable_journaled_lenient(tweak_id: &str, name: &str) -> Result<()> {
+    let previous_start = start_type(name)?.unwrap_or(START_DEMAND);
+    let was_running = imp::is_running(name).unwrap_or(false);
+    journal::record(tweak_id, Undo::Service { name: name.to_string(), previous_start, was_running })?;
+    imp::set_start_type(name, START_DISABLED)?;
+    if was_running {
+        let _ = imp::stop(name);
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 mod imp {
     use windows::Win32::System::Services::{

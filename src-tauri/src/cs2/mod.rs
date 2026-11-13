@@ -105,7 +105,7 @@ fn steam_path_candidates() -> Vec<PathBuf> {
     v
 }
 
-fn read_vdf(path: &Path) -> Option<vdf::Vdf> {
+pub(crate) fn read_vdf(path: &Path) -> Option<vdf::Vdf> {
     let text = std::fs::read_to_string(path).ok()?;
     vdf::parse(&text).ok()
 }

@@ -1,5 +1,6 @@
-//! STUB — low-level Windows helpers. Owned by worker "tweaks/system".
+//! Low-level Windows helpers.
 pub mod files;
 pub mod power;
 pub mod registry;
+pub mod restore_point;
 pub mod services;

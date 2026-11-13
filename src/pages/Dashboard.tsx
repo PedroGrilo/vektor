@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Cpu, MemoryStick, MonitorCog, Rocket, ShieldCheck, Zap } from "lucide-react";
+import { ArrowRight, Cpu, Gamepad2, MemoryStick, MonitorCog, Rocket, ShieldCheck } from "lucide-react";
 import type { PageId } from "../App";
 import { backend } from "../mock";
 import { Gauge, PageHead, useLiveStats, useLoad, useToast } from "../ui";
@@ -14,8 +14,8 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
   const available = (tw.data ?? []).filter((t) => t.available);
   const applied = available.filter((t) => t.applied);
   const score = available.length ? Math.round((applied.length / available.length) * 100) : 0;
-  // One-click boost only touches low-risk tweaks that need no reboot.
-  const quick = available.filter((t) => !t.applied && t.risk === "low" && !t.requiresReboot);
+  // One-click boost only touches low-risk tweaks that need no reboot and ask nothing.
+  const quick = available.filter((t) => !t.applied && t.risk === "low" && !t.requiresReboot && !t.question);
 
   const boost = async () => {
     setBoosting(true);
@@ -92,12 +92,12 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
 
       <div className="grid-2" style={{ marginTop: 16 }}>
         <div className="panel row" style={{ gap: 16 }}>
-          <Zap size={22} color="var(--accent)" />
+          <Gamepad2 size={22} color="var(--accent)" />
           <div style={{ flex: 1 }}>
-            <h3>Counter-Strike 2</h3>
-            <div className="sub">Configs, presets, opções de arranque e benchmark de FPS.</div>
+            <h3>Os teus jogos</h3>
+            <div className="sub">Otimiza cada jogo da Steam, Epic, GOG, Ubisoft e Riot, e escolhe quais ativam o Modo Jogo.</div>
           </div>
-          <button className="btn" onClick={() => go("cs2")}>Abrir <ArrowRight size={15} /></button>
+          <button className="btn" onClick={() => go("games")}>Abrir <ArrowRight size={15} /></button>
         </div>
         <div className="panel row" style={{ gap: 16 }}>
           <ShieldCheck size={22} color="var(--ok)" />

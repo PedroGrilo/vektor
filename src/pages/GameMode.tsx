@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Cpu, Loader2, MonitorUp, Palette, Play, Power, Save, Square, XCircle } from "lucide-react";
+import { Cpu, Gamepad2, Loader2, MonitorUp, Palette, Power, Save, Square, Trash2, XCircle } from "lucide-react";
+import type { PageId } from "../App";
 import type { DisplayMode, SessionConfig } from "../api";
 import { backend } from "../mock";
 import { PageHead, Toggle, useLoad, usePoll, useToast } from "../ui";
 
 const modeKey = (m: DisplayMode) => `${m.width}x${m.height}@${m.refresh}`;
 
-export default function GameMode() {
+export default function GameMode({ go }: { go: (p: PageId) => void }) {
   const toast = useToast();
   const [live] = usePoll(() => backend.sessionStatus(), 2000);
   const topo = useLoad(() => backend.sessionTopology());
@@ -50,10 +51,10 @@ export default function GameMode() {
   return (
     <>
       <PageHead eyebrow="// modo jogo" title="Modo Jogo"
-        desc="Quando o CS2 arranca, o Vektor aplica estas definições. Quando fecha, repõe tudo. O Vektor tem de estar aberto ou na bandeja."
+        desc="Quando um dos jogos da lista arranca, o Vektor aplica estas definições. Quando fecha, repõe tudo. O Vektor tem de estar aberto ou na bandeja."
         right={
           <div className="row">
-            <button className="btn" onClick={() => backend.cs2Launch([]).catch((e) => toast("err", String(e)))}><Play size={15} /> Jogar</button>
+            <button className="btn" onClick={() => go("games")}><Gamepad2 size={15} /> Adicionar jogos</button>
             <button className="btn primary" disabled={!dirty || saving} onClick={save}>
               {saving ? <Loader2 size={15} className="spin" /> : <Save size={15} />} Guardar
             </button>
@@ -65,9 +66,9 @@ export default function GameMode() {
           <div className="row">
             <Power size={20} color={live?.active ? "var(--ok)" : "var(--text-faint)"} />
             <div>
-              <h3>{live?.active ? "Sessão ativa" : "À espera do CS2"}</h3>
+              <h3>{live?.active ? `Sessão ativa${live.game ? `: ${live.game}` : ""}` : "À espera de um jogo"}</h3>
               <div className="sub">
-                {live?.active && live.since ? `Desde ${new Date(live.since).toLocaleTimeString("pt-PT")} · PID ${live.cs2Pid ?? "?"}` : "Abre o CS2 para ativar automaticamente."}
+                {live?.active && live.since ? `Desde ${new Date(live.since).toLocaleTimeString("pt-PT")} · PID ${live.pid ?? "?"}` : cfg.games.length ? `Ativa-se sozinho quando abres: ${cfg.games.map((g) => g.name).join(", ")}.` : "Nenhum jogo na lista."}
               </div>
             </div>
           </div>
@@ -86,10 +87,33 @@ export default function GameMode() {
         )}
       </div>
 
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <h3 className="row"><Gamepad2 size={16} color="var(--accent)" /> Jogos que ativam o Modo Jogo</h3>
+        <div className="sub" style={{ marginBottom: 10 }}>
+          Fechar apps e afinidade aplicam-se a todos. Resolução e vibrance só aos jogos com essa opção ligada (ex.: 4:3 só no CS2).
+        </div>
+        {cfg.games.length === 0 && <div className="sub">Nenhum jogo. Adiciona em <a onClick={() => go("games")}>Jogos</a>.</div>}
+        <div className="stack" style={{ gap: 4 }}>
+          {cfg.games.map((g) => (
+            <div key={g.exe} className="row between" style={{ padding: "4px 2px" }}>
+              <span className="row" style={{ minWidth: 0 }}>
+                <b>{g.name}</b> <span className="mono faint" style={{ fontSize: 11.5 }}>{g.exe}</span>
+              </span>
+              <span className="row">
+                <span className="sub">Resolução e vibrance</span>
+                <Toggle label={`Resolução e vibrance em ${g.name}`} on={g.display}
+                  onChange={(v) => setCfg({ ...cfg, games: cfg.games.map((x) => (x.exe === g.exe ? { ...x, display: v } : x)) })} />
+                <button className="btn ghost" aria-label={`Remover ${g.name}`} onClick={() => setCfg({ ...cfg, games: cfg.games.filter((x) => x.exe !== g.exe) })}><Trash2 size={14} /></button>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="grid-2">
         <div className="panel">
           <h3 className="row"><XCircle size={16} color="var(--accent)" /> Fechar apps durante o jogo</h3>
-          <div className="sub" style={{ marginBottom: 10 }}>Só apps conhecidas. Steam e CS2 nunca são fechados.</div>
+          <div className="sub" style={{ marginBottom: 10 }}>Só apps conhecidas. A Steam e os jogos nunca são fechados.</div>
           {appChoices.length === 0 && <div className="sub">Nenhuma app conhecida a correr agora.</div>}
           <div className="stack" style={{ gap: 4 }}>
             {appChoices.map(([name, label]) => (
@@ -106,7 +130,7 @@ export default function GameMode() {
 
         <div className="panel">
           <h3 className="row"><Cpu size={16} color="var(--accent)" /> Afinidade de CPU</h3>
-          <div className="sub" style={{ marginBottom: 12 }}>Fixa o CS2 em núcleos específicos. Útil em Ryzen com 2 CCDs ou 3D V-Cache.</div>
+          <div className="sub" style={{ marginBottom: 12 }}>Fixa o jogo em núcleos específicos. Útil em Ryzen com 2 CCDs ou 3D V-Cache.</div>
           <div className="tabs" style={{ marginBottom: 12 }}>
             {(["off", "auto", "custom"] as const).map((m) => (
               <button key={m} className={cfg.affinity === m ? "active" : ""} onClick={() => setCfg({ ...cfg, affinity: m })}>
@@ -130,7 +154,7 @@ export default function GameMode() {
         <div className="panel">
           <h3 className="row"><MonitorUp size={16} color="var(--accent)" /> Resolução durante o jogo</h3>
           <div className="sub" style={{ marginBottom: 12 }}>
-            Ex.: 4:3 esticado (1280×960). Repõe a resolução nativa quando o jogo fecha. Para esticar, ativa o dimensionamento "Ecrã inteiro" no painel da gráfica.
+            Só nos jogos com “Resolução e vibrance” ligado. Ex.: 4:3 esticado (1280×960). Repõe a resolução nativa quando o jogo fecha. Para esticar, ativa o dimensionamento "Ecrã inteiro" no painel da gráfica.
           </div>
           <select className="input" value={cfg.resolution ? modeKey(cfg.resolution) : ""}
             onChange={(e) => {
@@ -150,7 +174,7 @@ export default function GameMode() {
           </div>
           <div className="sub" style={{ marginBottom: 12 }}>
             {vib.data?.supported
-              ? "Cores mais vivas só enquanto o CS2 está em primeiro plano. 50% = normal."
+              ? "Cores mais vivas só enquanto o jogo está em primeiro plano. 50% = normal."
               : vib.data?.vendor === "nvidia"
                 ? "Disponível só em AMD: a NVIDIA não publica esta função na API pública. Em NVIDIA, usa \"Ajustar definições de cor\" no Painel de Controlo."
                 : "Não suportado nesta gráfica."}

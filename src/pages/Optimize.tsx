@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Loader2, Sparkles, XCircle } from "lucide-react";
+import { HelpCircle, Loader2, Sparkles, XCircle } from "lucide-react";
 import type { ProcInfo, TweakCategory, TweakInfo } from "../api";
 import { backend } from "../mock";
+import { ensureRestorePoint } from "../safety";
 import { PageHead, RiskChip, Toggle, useLoad, useToast } from "../ui";
 
 const CATS: { id: TweakCategory | "all"; label: string }[] = [
@@ -12,6 +13,7 @@ const CATS: { id: TweakCategory | "all"; label: string }[] = [
   { id: "game", label: "Jogo" },
   { id: "input", label: "Rato" },
   { id: "network", label: "Rede" },
+  { id: "services", label: "Serviços" },
   { id: "privacy", label: "Privacidade" },
 ];
 
@@ -24,6 +26,7 @@ export default function Optimize() {
   const toggle = async (t: TweakInfo, on: boolean) => {
     setBusy(t.id);
     try {
+      if (on) await ensureRestorePoint(t.risk, toast);
       const updated = on ? await backend.applyTweak(t.id) : await backend.revertTweak(t.id);
       tw.setData((list) => (list ?? []).map((x) => (x.id === t.id ? updated : x)));
       toast("ok", `${t.title}: ${on ? "aplicado" : "revertido"}${on && t.requiresReboot ? " (requer reinício)" : ""}`);
@@ -42,6 +45,13 @@ export default function Optimize() {
       <PageHead eyebrow="// afinação do windows" title="Otimizações"
         desc="Cada otimização guarda o estado anterior antes de alterar o sistema e pode ser revertida a qualquer momento." />
 
+      {cat === "services" && (
+        <div className="callout info" style={{ marginBottom: 14 }}>
+          <HelpCircle size={18} />
+          <span>Cada serviço só deve ser desligado se a resposta à pergunta for “não”. Ganho pequeno, mas menos processos em segundo plano. Antes da primeira alteração o Vektor cria um ponto de restauro do Windows.</span>
+        </div>
+      )}
+
       <div className="tabs" style={{ marginBottom: 18 }}>
         {CATS.filter((c) => counts(c.id) > 0).map((c) => (
           <button key={c.id} className={cat === c.id ? "active" : ""} onClick={() => setCat(c.id)}>
@@ -56,6 +66,11 @@ export default function Optimize() {
         {list.map((t) => (
           <div key={t.id} className={`tweak ${t.applied ? "applied" : ""}`} style={{ opacity: t.available ? 1 : 0.55 }}>
             <div>
+              {t.question && (
+                <div className="row" style={{ gap: 6, color: "var(--accent)", fontSize: 13, marginBottom: 4 }}>
+                  <HelpCircle size={14} /> {t.question} <span className="faint">Se não, podes desligar.</span>
+                </div>
+              )}
               <h4>{t.title}</h4>
               <p>{t.description}</p>
               <div className="meta">

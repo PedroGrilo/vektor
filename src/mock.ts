@@ -1,19 +1,23 @@
 // In-browser preview data so the UI can be designed with `bun run dev` outside Tauri.
 import { api, inTauri } from "./api";
-import type { AppSettings, BenchRecord, BenchStatus, CleanTarget, ConfigPreset, Cs2Config, DisplayInfo, MemoryConfig, MemoryStatus, NvidiaStatus, SessionConfig, SessionStatus, TweakInfo, VibranceInfo } from "./api";
+import type { AppSettings, BenchRecord, BenchStatus, Change, CleanTarget, ConfigPreset, Cs2Config, DisplayInfo, DnsResult, DnsStatus, GameInfo, MemoryConfig, MemoryStatus, NvidiaStatus, RestorePoint, SessionConfig, SessionStatus, StartupEntry, TweakInfo, VibranceInfo } from "./api";
 
 const wait = <T,>(v: T, ms = 350) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), ms));
 
 let tweaks: TweakInfo[] = [
-  { id: "power-plan", category: "power", title: "Plano de energia Vektor", description: "Plano de desempenho máximo: sem estacionamento de núcleos nem suspensão seletiva de USB.", risk: "low", requiresReboot: false, applied: true, available: true, reason: null },
-  { id: "game-mode", category: "system", title: "Modo de Jogo do Windows", description: "Dá prioridade ao jogo em primeiro plano e suspende atualizações em segundo plano.", risk: "low", requiresReboot: false, applied: false, available: true, reason: null },
-  { id: "game-dvr-off", category: "system", title: "Desligar gravação Game DVR", description: "Remove a captura em segundo plano da Xbox Game Bar, que consome GPU.", risk: "low", requiresReboot: false, applied: false, available: true, reason: null },
-  { id: "hags", category: "gpu", title: "Agendamento de GPU por hardware", description: "Reduz a latência de submissão de frames em GPUs suportadas.", risk: "medium", requiresReboot: true, applied: false, available: true, reason: null },
-  { id: "mouse-accel-off", category: "input", title: "Desligar aceleração do rato", description: "Movimento 1:1, essencial para pontaria consistente.", risk: "low", requiresReboot: false, applied: true, available: true, reason: null },
-  { id: "network-throttling-off", category: "network", title: "Sem limitação de rede multimédia", description: "Desativa o NetworkThrottlingIndex do MMCSS.", risk: "low", requiresReboot: false, applied: false, available: true, reason: null },
-  { id: "cs2-priority", category: "game", title: "CS2 com prioridade alta", description: "O Windows arranca sempre o cs2.exe com prioridade de CPU alta.", risk: "low", requiresReboot: false, applied: false, available: true, reason: null },
-  { id: "cs2-fso-off", category: "game", title: "Sem otimizações de ecrã inteiro (CS2)", description: "Força ecrã inteiro exclusivo verdadeiro.", risk: "low", requiresReboot: false, applied: false, available: false, reason: "CS2 não encontrado" },
-  { id: "telemetry-off", category: "privacy", title: "Desligar telemetria (DiagTrack)", description: "Para o serviço de telemetria do Windows.", risk: "low", requiresReboot: false, applied: false, available: true, reason: null },
+  { id: "power-plan", category: "power", title: "Plano de energia Vektor", description: "Plano de desempenho máximo: sem estacionamento de núcleos nem suspensão seletiva de USB.", risk: "low", requiresReboot: false, applied: true, available: true, reason: null, question: null },
+  { id: "game-mode", category: "system", title: "Modo de Jogo do Windows", description: "Dá prioridade ao jogo em primeiro plano e suspende atualizações em segundo plano.", risk: "low", requiresReboot: false, applied: false, available: true, reason: null, question: null },
+  { id: "game-dvr-off", category: "system", title: "Desligar gravação Game DVR", description: "Remove a captura em segundo plano da Xbox Game Bar, que consome GPU.", risk: "low", requiresReboot: false, applied: false, available: true, reason: null, question: null },
+  { id: "hags", category: "gpu", title: "Agendamento de GPU por hardware", description: "Reduz a latência de submissão de frames em GPUs suportadas.", risk: "medium", requiresReboot: true, applied: false, available: true, reason: null, question: null },
+  { id: "mouse-accel-off", category: "input", title: "Desligar aceleração do rato", description: "Movimento 1:1, essencial para pontaria consistente.", risk: "low", requiresReboot: false, applied: true, available: true, reason: null, question: null },
+  { id: "network-throttling-off", category: "network", title: "Sem limitação de rede multimédia", description: "Desativa o NetworkThrottlingIndex do MMCSS.", risk: "low", requiresReboot: false, applied: false, available: true, reason: null, question: null },
+  { id: "cs2-priority", category: "game", title: "CS2 com prioridade alta", description: "O Windows arranca sempre o cs2.exe com prioridade de CPU alta.", risk: "low", requiresReboot: false, applied: false, available: true, reason: null, question: null },
+  { id: "cs2-fso-off", category: "game", title: "Sem otimizações de ecrã inteiro (CS2)", description: "Força ecrã inteiro exclusivo verdadeiro.", risk: "low", requiresReboot: false, applied: false, available: false, reason: "CS2 não encontrado", question: null },
+  { id: "nic-power-saving-off", category: "network", title: "Placa de rede sem poupança de energia", description: "Impede o Windows de desligar a placa de rede para poupar energia e desliga a Ethernet de baixo consumo (EEE).", risk: "low", requiresReboot: true, applied: false, available: true, reason: null, question: null },
+  { id: "svc-printing-off", category: "services", title: "Desligar serviços de impressão", description: "Desliga o Spooler de impressão. Deixas de poder imprimir, incluindo “Imprimir para PDF”.", risk: "medium", requiresReboot: false, applied: false, available: true, reason: null, question: "Usas impressora ou “Imprimir para PDF”?" },
+  { id: "svc-xbox-off", category: "services", title: "Desligar serviços Xbox", description: "Jogos da Xbox app ou do Game Pass deixam de entrar na conta e de sincronizar saves.", risk: "medium", requiresReboot: false, applied: false, available: true, reason: null, question: "Usas a app Xbox, o Game Pass ou um comando Xbox sem fios?" },
+  { id: "svc-fax-off", category: "services", title: "Desligar o serviço de Fax", description: "Desliga o serviço de Fax do Windows.", risk: "low", requiresReboot: false, applied: true, available: true, reason: null, question: "Envias ou recebes fax pelo PC?" },
+  { id: "telemetry-off", category: "privacy", title: "Desligar telemetria (DiagTrack)", description: "Para o serviço de telemetria do Windows.", risk: "low", requiresReboot: false, applied: false, available: true, reason: null, question: null },
 ];
 
 const presetConfig = (fps: string): Cs2Config => ({
@@ -43,8 +47,34 @@ const cleanTargets: CleanTarget[] = [
 let memCfg: MemoryConfig = { enabled: true, standbyThresholdMb: 1024, freeThresholdMb: 1024, intervalSec: 5 };
 let mem: MemoryStatus = { serviceInstalled: false, serviceRunning: false, config: memCfg, totalMb: 32768, freeMb: 812, standbyMb: 14320, modifiedMb: 210, purgeCount: 0, lastPurge: null, lastCheck: null, lastError: null };
 let nv: NvidiaStatus = { nvidiaGpu: true, inspectorAvailable: true, applied: false, cs2Applied: false, inspectorVersion: "3.0.2.1" };
-let sessCfg: SessionConfig = { enabled: true, closeApps: ["Discord.exe", "chrome.exe"], reopenApps: true, affinity: "auto", affinityMask: null, resolution: { width: 1280, height: 960, refresh: 144 }, vibrance: 70 };
-let sess: SessionStatus = { active: false, since: null, cs2Pid: null, actions: [], config: sessCfg };
+let sessCfg: SessionConfig = { enabled: true, closeApps: ["Discord.exe", "chrome.exe"], reopenApps: true, affinity: "auto", affinityMask: null, resolution: { width: 1280, height: 960, refresh: 144 }, vibrance: 70,
+  games: [{ exe: "cs2.exe", name: "Counter-Strike 2", display: true }, { exe: "fortniteclient-win64-shipping.exe", name: "Fortnite", display: false }] };
+let sess: SessionStatus = { active: false, since: null, pid: null, game: null, actions: [], config: sessCfg };
+const noTweaks = { priority: false, gpu: false, fso: false };
+let games: GameInfo[] = [
+  { id: "steam:730", name: "Counter-Strike 2", source: "steam", installDir: "D:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive", exe: "D:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\bin\\win64\\cs2.exe", candidates: ["D:\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\bin\\win64\\cs2.exe"], tweaks: { priority: true, gpu: true, fso: false }, inSession: true, running: false },
+  { id: "epic:Fortnite", name: "Fortnite", source: "epic", installDir: "C:\\Program Files\\Epic Games\\Fortnite", exe: "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe", candidates: ["C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Binaries\\Win64\\FortniteClient-Win64-Shipping.exe", "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Binaries\\Win64\\FortniteLauncher.exe"], tweaks: noTweaks, inSession: true, running: false },
+  { id: "riot:valorant", name: "VALORANT", source: "riot", installDir: "C:\\Riot Games\\VALORANT\\live", exe: "C:\\Riot Games\\VALORANT\\live\\ShooterGame\\Binaries\\Win64\\VALORANT-Win64-Shipping.exe", candidates: ["C:\\Riot Games\\VALORANT\\live\\ShooterGame\\Binaries\\Win64\\VALORANT-Win64-Shipping.exe"], tweaks: noTweaks, inSession: false, running: false },
+  { id: "steam:1245620", name: "ELDEN RING", source: "steam", installDir: "D:\\SteamLibrary\\steamapps\\common\\ELDEN RING", exe: "D:\\SteamLibrary\\steamapps\\common\\ELDEN RING\\Game\\eldenring.exe", candidates: ["D:\\SteamLibrary\\steamapps\\common\\ELDEN RING\\Game\\eldenring.exe", "D:\\SteamLibrary\\steamapps\\common\\ELDEN RING\\Game\\start_protected_game.exe"], tweaks: noTweaks, inSession: false, running: false },
+  { id: "gog:1207664663", name: "The Witcher 3: Wild Hunt", source: "gog", installDir: "C:\\GOG Games\\The Witcher 3", exe: null, candidates: [], tweaks: noTweaks, inSession: false, running: false },
+];
+const setGame = (id: string, f: (g: GameInfo) => GameInfo) => { games = games.map((g) => (g.id === id ? f(g) : g)); return wait(games.find((g) => g.id === id)!, 400); };
+let startup: StartupEntry[] = [
+  { id: "hkcu-run|Discord", name: "Discord", command: "C:\\Users\\cliente\\AppData\\Local\\Discord\\Update.exe --processStart Discord.exe", location: "Registo (utilizador)", enabled: true, changedByVektor: false, protected: false, hint: "O Discord deixa de abrir sozinho." },
+  { id: "hkcu-run|Spotify", name: "Spotify", command: "C:\\Users\\cliente\\AppData\\Roaming\\Spotify\\Spotify.exe /minimized", location: "Registo (utilizador)", enabled: false, changedByVektor: true, protected: false, hint: "O Spotify deixa de abrir sozinho." },
+  { id: "hklm-run|RtkAudUService", name: "RtkAudUService", command: "C:\\Windows\\System32\\RtkAudUService64.exe -background", location: "Registo (todos os utilizadores)", enabled: true, changedByVektor: false, protected: false, hint: "Painel de áudio Realtek: efeitos e deteção de auscultadores podem deixar de funcionar." },
+  { id: "hklm-run|SecurityHealth", name: "SecurityHealth", command: "%windir%\\system32\\SecurityHealthSystray.exe", location: "Registo (todos os utilizadores)", enabled: true, changedByVektor: false, protected: true, hint: "Ícone da Segurança do Windows. Não desligar." },
+  { id: "user-folder|OneDrive.lnk", name: "OneDrive.lnk", command: "C:\\Users\\cliente\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\OneDrive.lnk", location: "Pasta Arranque (utilizador)", enabled: true, changedByVektor: false, protected: false, hint: "Os ficheiros deixam de sincronizar até abrires o OneDrive." },
+];
+let dnsSt: DnsStatus = { current: ["192.168.1.1"], applied: null };
+const dnsResults: DnsResult[] = [
+  { id: "cloudflare", name: "Cloudflare", servers: ["1.1.1.1", "1.0.0.1"], latencyMs: 9.4, success: 1 },
+  { id: "google", name: "Google", servers: ["8.8.8.8", "8.8.4.4"], latencyMs: 12.1, success: 1 },
+  { id: "current", name: "O teu DNS atual", servers: ["192.168.1.1"], latencyMs: 18.7, success: 1 },
+  { id: "quad9", name: "Quad9", servers: ["9.9.9.9", "149.112.112.112"], latencyMs: 21.3, success: 0.8 },
+  { id: "opendns", name: "OpenDNS", servers: ["208.67.222.222", "208.67.220.220"], latencyMs: 24.0, success: 1 },
+];
+let restorePoint: RestorePoint | null = { description: "Windows Update", date: "2026-11-02T09:12:00Z" };
 const displays: DisplayInfo[] = [{ device: "\\\\.\\DISPLAY1", name: "AOC 24G2", primary: true, current: { width: 1920, height: 1080, refresh: 144 },
   modes: [{ width: 1920, height: 1080, refresh: 144 }, { width: 1920, height: 1080, refresh: 60 }, { width: 1440, height: 1080, refresh: 144 }, { width: 1280, height: 960, refresh: 144 }, { width: 1024, height: 768, refresh: 144 }] }];
 let vib: VibranceInfo = { supported: true, vendor: "nvidia", current: 50 };
@@ -57,7 +87,7 @@ let settings: AppSettings = { autostart: false, startMinimized: false, closeToTr
 
 const mock: typeof api = {
   systemInfo: () => wait({ osName: "Windows 11 Pro", osBuild: "26100", hostname: "CLIENTE-PC", cpu: { name: "AMD Ryzen 7 7800X3D 8-Core Processor", vendor: "amd", cores: 8, threads: 16, zenGen: 4 }, gpus: [{ name: "NVIDIA GeForce RTX 4070", vendor: "nvidia", driverVersion: "32.0.15.6614", vramMb: 12288 }], ramTotalGb: 32, isAdmin: true }),
-  liveStats: () => wait({ cpuUsage: 8 + Math.random() * 20, ramUsedGb: 11.4 + Math.random(), ramTotalGb: 32, processCount: 212, cs2Running: false }, 120),
+  liveStats: () => wait({ cpuUsage: 8 + Math.random() * 20, ramUsedGb: 11.4 + Math.random(), ramTotalGb: 32, processCount: 212, cs2Running: false, activeGame: null }, 120),
   listTweaks: () => wait(tweaks),
   applyTweak: (id) => { tweaks = tweaks.map((t) => (t.id === id ? { ...t, applied: true } : t)); return wait(tweaks.find((t) => t.id === id)!, 600); },
   revertTweak: (id) => { tweaks = tweaks.map((t) => (t.id === id ? { ...t, applied: false } : t)); return wait(tweaks.find((t) => t.id === id)!, 500); },
@@ -95,6 +125,25 @@ const mock: typeof api = {
   benchHistory: () => wait(bench),
   benchDelete: (id) => { bench = bench.filter((b) => b.id !== id); return wait(bench); },
   benchSetNote: (id, note) => { bench = bench.map((b) => (b.id === id ? { ...b, note } : b)); return wait(bench); },
+  gamesList: () => wait(games, 600),
+  gamesSetExe: (id, exe) => setGame(id, (g) => ({ ...g, exe })),
+  gamesAdd: (exe, name) => { const g: GameInfo = { id: `manual:${exe}`, name: name || exe.split("\\").pop()!.replace(/\.exe$/i, ""), source: "manual", installDir: null, exe, candidates: [exe], tweaks: noTweaks, inSession: false, running: false }; games = [...games, g]; return wait(g); },
+  gamesRemove: (id) => { games = games.filter((g) => g.id !== id); return wait(undefined); },
+  gamesUnhideAll: () => wait(undefined),
+  gamesSetTweak: (id, kind, on) => setGame(id, (g) => ({ ...g, tweaks: { ...g.tweaks, [kind]: on } })),
+  gamesOptimize: (id, on) => setGame(id, (g) => ({ ...g, tweaks: { priority: on, gpu: on, fso: on } })),
+  gamesSetSession: (id, on) => setGame(id, (g) => ({ ...g, inSession: on })),
+  gamesRunningProcesses: () => wait([{ name: "Cyberpunk2077.exe", exe: "E:\\Games\\Cyberpunk 2077\\bin\\x64\\Cyberpunk2077.exe", memoryMb: 9120 }, { name: "chrome.exe", exe: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", memoryMb: 1830 }]),
+  restorePointLast: () => wait(restorePoint),
+  restorePointCreate: () => { restorePoint = { description: "Vektor", date: new Date().toISOString() }; return wait({ created: true, message: "Ponto de restauro criado.", last: restorePoint }, 2500); },
+  listChanges: () => wait<Change[]>([...tweaks.filter((t) => t.applied).map((t) => ({ id: t.id, title: t.title })), { id: "game:epic:Fortnite:priority", title: "Fortnite: prioridade de CPU alta" }, { id: "startup:hkcu-run|Spotify", title: "Arranque: Spotify" }]),
+  revertChange: (id) => { tweaks = tweaks.map((t) => (t.id === id ? { ...t, applied: false } : t)); return wait(undefined, 500); },
+  startupList: () => wait(startup),
+  startupSetEnabled: (id, enabled) => { startup = startup.map((e) => (e.id === id ? { ...e, enabled, changedByVektor: !e.changedByVektor } : e)); return wait(startup); },
+  dnsTest: () => wait(dnsResults, 2500),
+  dnsStatus: () => wait(dnsSt),
+  dnsApply: (p) => { dnsSt = { current: dnsResults.find((r) => r.id === p)!.servers, applied: dnsResults.find((r) => r.id === p)!.name }; return wait(dnsSt, 800); },
+  dnsRevert: () => { dnsSt = { current: ["192.168.1.1"], applied: null }; return wait(dnsSt, 600); },
   appSettings: () => wait(settings),
   appSetSettings: (s2) => { settings = s2; return wait(settings, 400); },
   exportDiagnostics: () => wait("C:\\Users\\cliente\\Desktop\\Vektor-diagnostico-20261016.zip", 900),

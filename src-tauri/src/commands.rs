@@ -2,7 +2,7 @@
 //! Blocking work runs on the blocking thread pool so the UI never stalls.
 
 use crate::error::{Error, Result};
-use crate::{appsettings, cleanup, cs2, diagnostics, display, journal, memory, nvidia, session, system, tweaks, updates};
+use crate::{appsettings, cleanup, cs2, diagnostics, display, dns, games, journal, memory, nvidia, session, startup, system, tweaks, updates, win};
 
 async fn blocking<T, F>(f: F) -> Result<T>
 where
@@ -250,4 +250,133 @@ pub async fn update_check(app: tauri::AppHandle) -> Result<updates::UpdateInfo> 
 #[tauri::command]
 pub async fn update_install(app: tauri::AppHandle) -> Result<()> {
     updates::install(&app).await
+}
+
+// ---------- game library ----------
+
+#[tauri::command]
+pub async fn games_list(refresh: bool) -> Result<Vec<games::GameInfo>> {
+    blocking(move || games::list(refresh)).await
+}
+
+#[tauri::command]
+pub async fn games_set_exe(id: String, exe: String) -> Result<games::GameInfo> {
+    blocking(move || games::set_exe(&id, &exe)).await
+}
+
+#[tauri::command]
+pub async fn games_add(exe: String, name: Option<String>) -> Result<games::GameInfo> {
+    blocking(move || games::add_manual(&exe, name)).await
+}
+
+#[tauri::command]
+pub async fn games_remove(id: String) -> Result<()> {
+    blocking(move || games::remove(&id)).await
+}
+
+#[tauri::command]
+pub async fn games_unhide_all() -> Result<()> {
+    blocking(games::unhide_all).await
+}
+
+#[tauri::command]
+pub async fn games_set_tweak(id: String, kind: games::TweakKind, on: bool) -> Result<games::GameInfo> {
+    blocking(move || games::set_tweak(&id, kind, on)).await
+}
+
+#[tauri::command]
+pub async fn games_optimize(id: String, on: bool) -> Result<games::GameInfo> {
+    blocking(move || games::optimize(&id, on)).await
+}
+
+#[tauri::command]
+pub async fn games_set_session(id: String, on: bool) -> Result<games::GameInfo> {
+    blocking(move || games::set_session(&id, on)).await
+}
+
+#[tauri::command]
+pub async fn games_running_processes() -> Result<Vec<games::RunningProcess>> {
+    blocking(games::running_processes).await
+}
+
+// ---------- restore points & change list ----------
+
+#[tauri::command]
+pub async fn restore_point_last() -> Result<Option<win::restore_point::RestorePoint>> {
+    blocking(win::restore_point::last).await
+}
+
+#[tauri::command]
+pub async fn restore_point_create(enable_protection: bool) -> Result<win::restore_point::RestorePointResult> {
+    blocking(move || win::restore_point::create(enable_protection)).await
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Change {
+    pub id: String,
+    pub title: String,
+}
+
+fn describe_change(id: &str) -> String {
+    if let Some(t) = tweaks::title_of(id) {
+        return t.to_string();
+    }
+    if let Some(t) = games::describe_tweak_id(id).or_else(|| startup::describe_journal_id(id)) {
+        return t;
+    }
+    match id {
+        dns::TWEAK_ID => "Servidores DNS".into(),
+        "nvidia-global" => "Perfil NVIDIA global".into(),
+        "nvidia-cs2" => "Perfil NVIDIA do CS2".into(),
+        "memory-service" => "Serviço VektorMemory".into(),
+        "cs2-config" => "Configs do CS2".into(),
+        "game-session" => "Sessão do Modo Jogo".into(),
+        other => other.to_string(),
+    }
+}
+
+/// Every change in the journal (catalog tweaks, games, startup, DNS, NVIDIA...).
+#[tauri::command]
+pub async fn list_changes() -> Result<Vec<Change>> {
+    blocking(|| Ok(journal::applied_ids().into_iter().map(|id| Change { title: describe_change(&id), id }).collect())).await
+}
+
+#[tauri::command]
+pub async fn revert_change(id: String) -> Result<()> {
+    blocking(move || journal::revert(&id)).await
+}
+
+// ---------- startup apps ----------
+
+#[tauri::command]
+pub async fn startup_list() -> Result<Vec<startup::StartupEntry>> {
+    blocking(startup::list).await
+}
+
+#[tauri::command]
+pub async fn startup_set_enabled(id: String, enabled: bool) -> Result<Vec<startup::StartupEntry>> {
+    blocking(move || startup::set_enabled(&id, enabled)).await
+}
+
+// ---------- network ----------
+
+#[tauri::command]
+pub async fn dns_test() -> Result<Vec<dns::DnsResult>> {
+    blocking(dns::test).await
+}
+
+#[tauri::command]
+pub async fn dns_status() -> Result<dns::DnsStatus> {
+    blocking(dns::status).await
+}
+
+#[tauri::command]
+pub async fn dns_apply(provider: String) -> Result<dns::DnsStatus> {
+    blocking(move || dns::apply(&provider)).await
+}
+
+#[tauri::command]
+pub async fn dns_revert() -> Result<dns::DnsStatus> {
+    blocking(dns::revert).await
 }

@@ -1,8 +1,10 @@
-//! "Modo jogo": a boost applied while CS2 runs and undone when it exits.
+//! "Modo jogo": a boost applied while a watched game runs and undone when it exits.
 //!
-//! A watcher thread polls for `cs2.exe` every 2 s. When the game starts (and the
-//! session is enabled) it closes chosen apps, pins CS2 to the recommended cores,
-//! switches resolution and turns on vibrance while the game has focus. When the
+//! A watcher thread polls every 2 s for the games in [`SessionConfig::games`]
+//! (CS2 by default; others are added from the game library). When one starts
+//! (and the session is enabled) it closes chosen apps, pins the game to the
+//! recommended cores and, for games marked `display`, switches resolution and
+//! turns on vibrance while the game has focus. When the
 //! game exits everything is reverted through the journal (tweak id
 //! `game-session`) and the closed apps are reopened. A crash of Vektor during a
 //! session is recovered at the next start ([`recover`]).
@@ -23,7 +25,12 @@ use crate::error::Result;
 use crate::journal::{self, Undo};
 
 pub(crate) const TWEAK_ID: &str = "game-session";
-const CS2_EXE: &str = "cs2.exe";
+const MAX_GAMES: usize = 64;
+/// Never watched as games: starting them must not trigger a session.
+const NEVER_WATCH: &[&str] = &[
+    "explorer.exe", "steam.exe", "steamwebhelper.exe", "epicgameslauncher.exe", "riotclientservices.exe",
+    "vektor.exe", "svchost.exe", "csrss.exe", "dwm.exe", "winlogon.exe", "services.exe", "lsass.exe",
+];
 const POLL: Duration = Duration::from_secs(2);
 const MAX_CLOSE_APPS: usize = 64;
 
@@ -36,6 +43,22 @@ pub enum AffinityMode {
     Custom,
 }
 
+/// A game the watcher reacts to.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionGame {
+    /// Executable file name, lowercase (e.g. "cs2.exe").
+    pub exe: String,
+    pub name: String,
+    /// Apply the resolution and vibrance settings to this game.
+    #[serde(default)]
+    pub display: bool,
+}
+
+fn default_games() -> Vec<SessionGame> {
+    vec![SessionGame { exe: "cs2.exe".into(), name: "Counter-Strike 2".into(), display: true }]
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SessionConfig {
@@ -46,6 +69,8 @@ pub struct SessionConfig {
     pub affinity_mask: Option<String>,
     pub resolution: Option<DisplayMode>,
     pub vibrance: Option<i32>,
+    /// Games that start a session. Configs from before 1.2 have none: CS2 only.
+    pub games: Vec<SessionGame>,
 }
 
 impl Default for SessionConfig {
@@ -58,6 +83,7 @@ impl Default for SessionConfig {
             affinity_mask: None,
             resolution: None,
             vibrance: None,
+            games: default_games(),
         }
     }
 }
@@ -67,7 +93,9 @@ impl Default for SessionConfig {
 pub struct SessionStatus {
     pub active: bool,
     pub since: Option<String>,
-    pub cs2_pid: Option<u32>,
+    pub pid: Option<u32>,
+    /// Name of the game the current session is for.
+    pub game: Option<String>,
     pub actions: Vec<String>,
     pub config: SessionConfig,
 }
@@ -92,6 +120,23 @@ pub(crate) fn sanitize(mut c: SessionConfig) -> SessionConfig {
         (640..=7680).contains(&r.width) && (480..=4320).contains(&r.height) && (24..=500).contains(&r.refresh)
     });
     c.vibrance = c.vibrance.map(|v| v.clamp(0, 100));
+
+    let mut games: Vec<SessionGame> = Vec::new();
+    for mut g in std::mem::take(&mut c.games) {
+        g.exe = g.exe.trim().to_lowercase();
+        g.name = g.name.trim().chars().take(80).collect();
+        let valid = g.exe.ends_with(".exe")
+            && g.exe.len() <= 128
+            && !g.exe.contains(['\\', '/', ':'])
+            && !NEVER_WATCH.contains(&g.exe.as_str());
+        if valid && !games.iter().any(|x| x.exe == g.exe) && games.len() < MAX_GAMES {
+            if g.name.is_empty() {
+                g.name = g.exe.trim_end_matches(".exe").to_string();
+            }
+            games.push(g);
+        }
+    }
+    c.games = games;
     c
 }
 
@@ -144,6 +189,7 @@ struct Runtime {
     active: bool,
     since: Option<String>,
     pid: Option<u32>,
+    game: Option<String>,
     actions: Vec<String>,
     focus: Option<focus::FocusLoop>,
     /// PID the user stopped manually; not auto-boosted again.
@@ -166,7 +212,8 @@ fn snapshot(config: SessionConfig) -> SessionStatus {
     with_rt(|r| SessionStatus {
         active: r.active,
         since: r.since.clone(),
-        cs2_pid: r.pid,
+        pid: r.pid,
+        game: r.game.clone(),
         actions: r.actions.clone(),
         config,
     })
@@ -191,12 +238,29 @@ pub fn stop() -> Result<SessionStatus> {
     status()
 }
 
-fn find_cs2(sys: &mut System) -> Option<u32> {
+/// Name of the game the active session is for (for the sidebar status).
+pub fn active_game() -> Option<String> {
+    with_rt(|r| if r.active { r.game.clone() } else { None })
+}
+
+/// First running watched game. The game of the active session wins while it runs.
+fn find_game(sys: &mut System, games: &[SessionGame]) -> Option<(u32, SessionGame)> {
     sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
-    sys.processes()
-        .iter()
-        .find(|(_, p)| p.name().to_string_lossy().eq_ignore_ascii_case(CS2_EXE))
-        .map(|(pid, _)| pid.as_u32())
+    let current = with_rt(|r| r.pid);
+    let mut found: Option<(u32, SessionGame)> = None;
+    for (pid, p) in sys.processes() {
+        let name = p.name().to_string_lossy().to_lowercase();
+        let Some(g) = games.iter().find(|g| g.exe == name) else { continue };
+        let pid = pid.as_u32();
+        if Some(pid) == current {
+            return Some((pid, g.clone()));
+        }
+        // Lowest PID = the instance that started first; keeps the choice stable between polls.
+        if found.as_ref().is_none_or(|(f, _)| pid < *f) {
+            found = Some((pid, g.clone()));
+        }
+    }
+    found
 }
 
 /// Primary display device and its current mode, read through the display
@@ -210,7 +274,7 @@ fn primary_display() -> Option<(String, DisplayMode)> {
     Some((device, current))
 }
 
-fn begin(pid: u32) {
+fn begin(pid: u32, game: &SessionGame) {
     let cfg = load_config();
     let mut actions: Vec<String> = Vec::new();
 
@@ -240,7 +304,7 @@ fn begin(pid: u32) {
     }
 
     // 3) Resolution: journal the current mode before switching.
-    if let Some(r) = cfg.resolution {
+    if let Some(r) = cfg.resolution.filter(|_| game.display) {
         match primary_display() {
             Some((device, cur)) if cur != r => {
                 let undo = Undo::DisplayMode { device: device.clone(), width: cur.width, height: cur.height, refresh: cur.refresh };
@@ -257,14 +321,14 @@ fn begin(pid: u32) {
         }
     }
 
-    // 4) Vibrance while CS2 has focus.
+    // 4) Vibrance while the game has focus.
     let mut focus = None;
-    if let Some(level) = cfg.vibrance {
+    if let Some(level) = cfg.vibrance.filter(|_| game.display) {
         match crate::display::vibrance::get_level("") {
             Ok(original) => match journal::record(TWEAK_ID, Undo::Vibrance { device: String::new(), previous: original }) {
                 Ok(()) => {
                     focus = Some(focus::FocusLoop::start(pid, level, original));
-                    actions.push(format!("Vibrance {level}% com o CS2 em foco"));
+                    actions.push(format!("Vibrance {level}% com o {} em foco", game.name));
                 }
                 Err(e) => actions.push(format!("Erro no registo da vibrance: {e}")),
             },
@@ -280,6 +344,7 @@ fn begin(pid: u32) {
         r.active = true;
         r.since = Some(since);
         r.pid = Some(pid);
+        r.game = Some(game.name.clone());
         r.actions = actions;
         r.focus = focus;
     });
@@ -309,6 +374,7 @@ fn end() {
         r.active = false;
         r.since = None;
         r.pid = None;
+        r.game = None;
         r.actions = actions;
     });
 }
@@ -316,7 +382,7 @@ fn end() {
 /// Called once at startup: undo a session left behind by a crash.
 pub fn recover() {
     let leftover = journal::is_applied(TWEAK_ID) || !load_state().reopen.is_empty();
-    if leftover && find_cs2(&mut System::new()).is_none() {
+    if leftover && find_game(&mut System::new(), &load_config().games).is_none() {
         end();
     }
 }
@@ -333,19 +399,20 @@ pub fn spawn_watcher() {
 }
 
 fn tick(sys: &mut System) {
-    let pid = find_cs2(sys);
+    let cfg = load_config();
+    let found = find_game(sys, &cfg.games);
     let (active, active_pid, suppressed) = with_rt(|r| (r.active, r.pid, r.suppressed_pid));
-    match pid {
-        Some(p) if !active => {
-            if suppressed != Some(p) && load_config().enabled {
-                begin(p);
+    match found {
+        Some((p, g)) if !active => {
+            if suppressed != Some(p) && cfg.enabled {
+                begin(p, &g);
             }
         }
-        Some(p) if active_pid != Some(p) => {
-            // Game restarted between polls: close the old session, start fresh.
+        Some((p, g)) if active_pid != Some(p) => {
+            // Game restarted (or another one started) between polls: close the old session, start fresh.
             end();
-            if load_config().enabled {
-                begin(p);
+            if cfg.enabled {
+                begin(p, &g);
             }
         }
         Some(_) => {}
@@ -386,6 +453,23 @@ mod tests {
         assert_eq!(c.affinity_mask.as_deref(), Some("0xFF"));
         assert_eq!(c.resolution, Some(DisplayMode { width: 1280, height: 960, refresh: 240 }));
         assert_eq!(c.vibrance, Some(100));
+        assert_eq!(c.games, default_games());
+    }
+
+    #[test]
+    fn sanitizes_watched_games() {
+        let c = parse_config(br#"{"games":[
+            {"exe":"FortniteClient-Win64-Shipping.EXE","name":"Fortnite"},
+            {"exe":"fortniteclient-win64-shipping.exe","name":"dup"},
+            {"exe":"C:\\x\\game.exe","name":"path"},
+            {"exe":"steam.exe","name":"Steam"},
+            {"exe":"notes.txt","name":"txt"},
+            {"exe":"eldenring.exe","name":"","display":true}
+        ]}"#);
+        let exes: Vec<_> = c.games.iter().map(|g| g.exe.as_str()).collect();
+        assert_eq!(exes, ["fortniteclient-win64-shipping.exe", "eldenring.exe"]);
+        assert_eq!(c.games[1].name, "eldenring");
+        assert!(c.games[1].display && !c.games[0].display);
     }
 
     #[test]

@@ -4,11 +4,14 @@ mod commands;
 mod cs2;
 mod diagnostics;
 mod display;
+mod dns;
 mod error;
+mod games;
 mod journal;
 mod memory;
 mod nvidia;
 mod session;
+mod startup;
 mod system;
 mod tray;
 mod tweaks;
@@ -31,7 +34,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
-            // Undo a game session left behind by a crash, then watch for cs2.exe.
+            // Undo a game session left behind by a crash, then watch for the configured games.
             session::recover();
             session::spawn_watcher();
             tray::build(app.handle())?;
@@ -102,6 +105,29 @@ pub fn run() {
             commands::export_diagnostics,
             commands::update_check,
             commands::update_install,
+            // game library
+            commands::games_list,
+            commands::games_set_exe,
+            commands::games_add,
+            commands::games_remove,
+            commands::games_unhide_all,
+            commands::games_set_tweak,
+            commands::games_optimize,
+            commands::games_set_session,
+            commands::games_running_processes,
+            // restore points & changes
+            commands::restore_point_last,
+            commands::restore_point_create,
+            commands::list_changes,
+            commands::revert_change,
+            // startup apps
+            commands::startup_list,
+            commands::startup_set_enabled,
+            // network
+            commands::dns_test,
+            commands::dns_status,
+            commands::dns_apply,
+            commands::dns_revert,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vektor");

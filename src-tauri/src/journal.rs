@@ -24,6 +24,10 @@ pub enum RegValue {
     Dword(u32),
     Qword(u64),
     Sz(String),
+    /// REG_MULTI_SZ (e.g. gateway lists).
+    MultiSz(Vec<String>),
+    /// REG_BINARY (e.g. StartupApproved flags).
+    Binary(Vec<u8>),
 }
 
 /// One reversible step. Undo runs in reverse order of recording.
