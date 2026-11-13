@@ -5,7 +5,7 @@
 <h1 align="center">Vektor</h1>
 
 <p align="center">
-  A Windows PC and Counter-Strike 2 optimizer.<br />
+  A Windows PC and game optimizer, with extras for Counter-Strike 2.<br />
   Everything runs on your machine, and every change can be undone.
 </p>
 
@@ -20,12 +20,16 @@
 
 ## What it does
 
-- **Tunes Windows for games** with 22 tweaks you switch on one by one, or with a single "Optimize now" button that only applies the low-risk ones.
+- **Tunes Windows for games** with tweaks you switch on one by one, or with a single "Optimize now" button that only applies the low-risk ones. Service tweaks ask a question first ("Do you use a printer?").
+- **Optimizes every game you have**: finds Steam, Epic, GOG, Ubisoft and Riot games (or ones you add) and gives each one High CPU priority, the high-performance GPU and no fullscreen optimizations.
+- **Controls what starts with Windows**, with the same switch as Task Manager's Startup tab.
+- **Finds the fastest DNS** from your home and switches to it in one click; turns off network-adapter power saving.
+- **Creates a Windows restore point** before the first medium- or high-risk change.
 - **Frees disk space** by cleaning temporary files and caches, after showing you what it found.
 - **Keeps memory free while you play** with a small background service that clears the Windows standby list.
 - **Optimizes the NVIDIA driver profile**, globally and for CS2 only.
 - **Sets up Counter-Strike 2**: config presets, launch options and an FPS benchmark with history.
-- **Boosts the PC while CS2 is running** (closes chosen apps, pins CPU cores, switches resolution) and puts everything back when you quit.
+- **Boosts the PC while a game is running** (closes chosen apps, pins CPU cores, switches resolution for the games you pick) and puts everything back when you quit.
 - **Undoes anything**: every change is recorded first, so one click restores the original value.
 
 ## Download and install
