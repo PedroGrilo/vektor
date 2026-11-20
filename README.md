@@ -42,6 +42,12 @@ Requirements: Windows 10 or 11, 64-bit. The installer downloads the WebView2 run
 
 From version 1.1.0 on you do not need to come back here for new versions: Vektor checks for updates itself and installs them from **Definições → Atualizações**.
 
+### Vektor Lite (portable)
+
+For PCs that are not used for gaming (clients, office, family), each release also has `Vektor-Lite_x.y.z_portable.exe`: a single file you can run from a USB stick, with nothing installed. It keeps the general parts (dashboard, Windows tweaks, startup apps, cleanup, DNS, restore) and leaves out games, Game Mode, CS2, NVIDIA, the memory service, the tray and the updater. Gaming-only and battery-hungry tweaks are hidden, and the one-click boost leaves the power plan alone. Changes are kept in `%ProgramData%\Vektor`, so running the exe again later still lets you revert them.
+
+Both editions have a button for [Chris Titus Tech's WinUtil](https://christitus.com/win): after a confirmation it opens an elevated PowerShell window running `irm https://christitus.com/win | iex`. Changes made there are not tracked by Vektor.
+
 ## Screenshots
 
 | | |
@@ -169,7 +175,11 @@ bun install
 bun run dev              # interface only, in a browser, with demo data
 bunx tauri dev           # the full app (Windows)
 bunx tauri build         # the installer (Windows; needs the updater signing key)
+bun run dev:lite         # Lite interface in a browser
+bun run tauri:lite       # Vektor Lite: src-tauri/target/release/vektor.exe, no installer (Windows)
 ```
+
+Lite is the same code built with the `lite` Cargo feature, `vite --mode lite` (`__LITE__` in the UI) and `src-tauri/tauri.lite.conf.json`.
 
 On macOS or Linux you can still work on the interface with `bun run dev`, run the tests with `cd src-tauri && cargo test --lib`, and type-check the Windows code with `cargo clippy --target x86_64-pc-windows-msvc --lib` (needs the Rust Windows target and `llvm-rc`).
 

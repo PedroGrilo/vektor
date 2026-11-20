@@ -121,7 +121,7 @@ function BackgroundApps() {
   return (
     <div className="panel">
       <h3>Apps em segundo plano</h3>
-      <div className="sub" style={{ marginBottom: 12 }}>Fecha apps que consomem CPU e RAM durante o jogo. A Steam e o CS2 nunca são fechados.</div>
+      <div className="sub" style={{ marginBottom: 12 }}>{__LITE__ ? "Fecha apps que estão a consumir CPU e RAM." : "Fecha apps que consomem CPU e RAM durante o jogo. A Steam e o CS2 nunca são fechados."}</div>
       {apps.data?.length === 0 && <div className="sub">Nenhuma app conhecida a correr.</div>}
       <div className="stack" style={{ gap: 6 }}>
         {(apps.data ?? []).map((p) => (

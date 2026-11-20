@@ -1,0 +1,29 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Vektor Lite",
+  "identifier": "com.linkconsulting.vektor.lite",
+  "build": {
+    "beforeBuildCommand": "bun run build:lite"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Vektor Lite",
+        "width": 1180,
+        "height": 780,
+        "minWidth": 1000,
+        "minHeight": 660,
+        "decorations": false,
+        "transparent": false,
+        "center": true,
+        "backgroundColor": "#020238"
+      }
+    ]
+  },
+  "bundle": {
+    "shortDescription": "Otimizador de PC (portátil)",
+    "resources": [],
+    "createUpdaterArtifacts": false
+  }
+}

@@ -723,8 +723,29 @@ pub fn title_of(id: &str) -> Option<&'static str> {
     TWEAKS.iter().find(|t| t.id == id).map(|t| t.title)
 }
 
+/// Gaming-only or battery-hungry tweaks left out of Vektor Lite (office/home PCs).
+/// They can still be reverted from Restore if a full Vektor applied them.
+const LITE_HIDDEN: &[&str] = &[
+    "game-mode",
+    "hags",
+    "mmcss-games",
+    "network-throttling-off",
+    "priority-separation",
+    "mouse-accel-off",
+    "cs2-high-priority",
+    "cs2-gpu-high-performance",
+    "cs2-fso-off",
+    "power-throttling-off",
+    "windowed-game-optimizations",
+    "mpo-off",
+];
+
+fn listed(t: &Tweak) -> bool {
+    !(cfg!(feature = "lite") && LITE_HIDDEN.contains(&t.id))
+}
+
 pub fn list() -> Vec<TweakInfo> {
-    TWEAKS.iter().map(info).collect()
+    TWEAKS.iter().filter(|t| listed(t)).map(info).collect()
 }
 
 pub fn apply(id: &str) -> Result<TweakInfo> {

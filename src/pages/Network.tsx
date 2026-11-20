@@ -70,7 +70,8 @@ export default function Network() {
   return (
     <>
       <PageHead eyebrow="// rede" title="Rede"
-        desc="Testa qual DNS responde mais depressa a partir da tua casa e afina a placa de rede. O DNS não muda o ping dentro do jogo; acelera a ligação a servidores, lojas e lobbies." />
+        desc={__LITE__ ? "Testa qual DNS responde mais depressa nesta ligação e afina a placa de rede. Um DNS mais rápido acelera a abertura de sites e serviços."
+          : "Testa qual DNS responde mais depressa a partir da tua casa e afina a placa de rede. O DNS não muda o ping dentro do jogo; acelera a ligação a servidores, lojas e lobbies."} />
 
       <div className="panel" style={{ marginBottom: 16 }}>
         <div className="row between">

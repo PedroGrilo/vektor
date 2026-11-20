@@ -39,6 +39,17 @@
   color-scheme: dark;
 }
 
+/* Vektor Lite: blue palette (03045E 023E8A 0077B6 0096C7 00B4D8 48CAE4 90E0EF ADE8F4 CAF0F8).
+   Same five roles; the background is 03045E darkened so text keeps its contrast. */
+:root[data-edition="lite"] {
+  --ink: #020238;
+  --pine: #023e8a;
+  --teal: #0077b6;
+  --mint: #00b4d8;
+  --frost: #caf0f8;
+  --accent-2: #48cae4;
+}
+
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {

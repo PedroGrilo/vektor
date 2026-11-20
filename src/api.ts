@@ -440,6 +440,8 @@ export const api = {
   updateCheck: () => invoke<UpdateInfo>("update_check"),
   /** Downloads and runs the installer; the app restarts on its own. */
   updateInstall: () => invoke<void>("update_install"),
+  /** Opens Chris Titus Tech's WinUtil in an elevated PowerShell window. */
+  openWinUtil: () => invoke<void>("open_winutil"),
 };
 
 /** True when running inside Tauri (false in a plain browser preview). */

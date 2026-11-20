@@ -20,7 +20,8 @@ import SettingsPage from "./pages/Settings";
 
 export type PageId = "dashboard" | "optimize" | "startup" | "cleanup" | "memory" | "network" | "nvidia" | "games" | "game" | "cs2" | "restore" | "settings";
 
-const NAV: { id: PageId; label: string; icon: typeof GaugeIcon; section?: string }[] = [
+type NavItem = { id: PageId; label: string; icon: typeof GaugeIcon; section?: string };
+const FULL_NAV: NavItem[] = [
   { id: "dashboard", label: "Painel", icon: GaugeIcon, section: "Sistema" },
   { id: "optimize", label: "Otimizações", icon: SlidersHorizontal },
   { id: "startup", label: "Arranque", icon: Power },
@@ -34,6 +35,11 @@ const NAV: { id: PageId; label: string; icon: typeof GaugeIcon; section?: string
   { id: "restore", label: "Restaurar", icon: History, section: "Segurança" },
   { id: "settings", label: "Definições", icon: SettingsIcon },
 ];
+// Vektor Lite (portable, for clients' PCs): no gaming, NVIDIA or memory service.
+const LITE_PAGES = new Set<PageId>(["dashboard", "optimize", "startup", "cleanup", "network", "restore", "settings"]);
+const NAV: NavItem[] = __LITE__
+  ? FULL_NAV.filter((n) => LITE_PAGES.has(n.id)).map((n) => (n.id === "restore" ? { ...n, section: "Segurança" } : n))
+  : FULL_NAV;
 const PAGE_IDS = new Set<string>(NAV.map((n) => n.id));
 
 const TitleBar = memo(function TitleBar() {
@@ -42,7 +48,7 @@ const TitleBar = memo(function TitleBar() {
     <header className="titlebar" data-tauri-drag-region>
       <div className="brand" data-tauri-drag-region>
         <Logo />
-        VEKTOR <small>v{__APP_VERSION__}</small>
+        VEKTOR{__LITE__ && " LITE"} <small>v{__APP_VERSION__}</small>
       </div>
       <div className="controls">
         <button aria-label="Minimizar" onClick={() => win?.minimize()}><Minus size={15} /></button>
@@ -58,13 +64,13 @@ export function Logo({ size = 20 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
       <defs>
         <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#cfeee6" />
-          <stop offset=".45" stopColor="#28c39d" />
-          <stop offset="1" stopColor="#0f7a62" />
+          <stop offset="0" style={{ stopColor: "var(--frost)" }} />
+          <stop offset=".45" style={{ stopColor: "var(--mint)" }} />
+          <stop offset="1" style={{ stopColor: "var(--teal)" }} />
         </linearGradient>
       </defs>
       <path d="M3 4h4.2L12 15.5 16.8 4H21l-7.4 16h-3.2L3 4Z" fill="url(#lg)" />
-      <path d="M9.5 4h5L12 10 9.5 4Z" fill="#0d0e10" opacity=".55" />
+      <path d="M9.5 4h5L12 10 9.5 4Z" style={{ fill: "var(--ink)" }} opacity=".55" />
     </svg>
   );
 }
@@ -76,7 +82,8 @@ function SidebarStatus() {
     <div className="status-card">
       <div className="row between" style={{ marginBottom: 6 }}>
         <span className="label">Estado</span>
-        {stats?.activeGame ? <span className="chip on"><span className="dot" />{stats.activeGame}</span>
+        {__LITE__ ? <span className="chip">portátil</span>
+          : stats?.activeGame ? <span className="chip on"><span className="dot" />{stats.activeGame}</span>
           : stats?.cs2Running ? <span className="chip on"><span className="dot" />CS2 ativo</span>
           : <span className="chip">em espera</span>}
       </div>
@@ -125,6 +132,8 @@ export default function App() {
 
   useEffect(() => {
     // Respect the "check for updates" preference; default is on.
+    // The portable Lite exe has no installer to update through.
+    if (__LITE__) return;
     backend.appSettings().then((s) => { if (s.autoUpdate) startAutoUpdateChecks(); }).catch(() => {});
   }, []);
 

@@ -6,12 +6,14 @@ import { backend } from "../mock";
 import { PageHead, Toggle, useLoad, useToast } from "../ui";
 import { checkForUpdate, installUpdate, useUpdate } from "../updates";
 
-const ROWS: { key: keyof AppSettings; title: string; desc: string }[] = [
+const ALL_ROWS: { key: keyof AppSettings; title: string; desc: string }[] = [
   { key: "autostart", title: "Arrancar com o Windows", desc: "Tarefa agendada com privilégios elevados — sem pedido de UAC no arranque." },
   { key: "startMinimized", title: "Arrancar minimizado", desc: "No arranque automático, fica só na bandeja." },
   { key: "closeToTray", title: "Fechar para a bandeja", desc: "Fechar a janela mantém o Vektor ativo — necessário para o modo jogo automático." },
   { key: "autoUpdate", title: "Procurar atualizações automaticamente", desc: "Verifica no arranque e de 6 em 6 horas se há uma versão nova no GitHub. Nada é instalado sem carregares em Atualizar." },
 ];
+// The portable Lite exe runs on demand: no autostart, tray or updater.
+const ROWS = __LITE__ ? [] : ALL_ROWS;
 
 export default function Settings() {
   const toast = useToast();
@@ -48,9 +50,11 @@ export default function Settings() {
     <>
       <PageHead eyebrow="// definições" title="Definições" desc="Comportamento da aplicação, atualizações e suporte." />
 
-      <Updates />
+      {__LITE__ ? (
+        <div className="callout info"><Info size={18} /><span>Versão portátil: não instala nada, não arranca com o Windows e não se atualiza sozinha. As alterações ficam em %ProgramData%\Vektor e podem ser revertidas em Restaurar, mesmo depois de apagar o .exe e voltar a corrê-lo.</span></div>
+      ) : <Updates />}
 
-      <div className="stack" style={{ gap: 10, marginTop: 16 }}>
+      <div className="stack" style={{ gap: 10, marginTop: ROWS.length ? 16 : 0 }}>
         {ROWS.map((r) => (
           <div key={r.key} className={`tweak ${st.data?.[r.key] ? "applied" : ""}`}>
             <div>
@@ -80,7 +84,8 @@ export default function Settings() {
             <dt>github</dt><dd><a onClick={() => link(AUTHOR_URL)}>github.com/PedroGrilo</a></dd>
             <dt>projeto</dt><dd><a onClick={() => link(PROJECT_URL)}>github.com/PedroGrilo/vektor</a></dd>
             <dt>dados</dt><dd className="mono">%ProgramData%\Vektor</dd>
-            <dt>terceiros</dt><dd>NVIDIA Profile Inspector (MIT)</dd>
+            <dt>edição</dt><dd>{__LITE__ ? "Lite (portátil)" : "Completa"}</dd>
+            {!__LITE__ && <><dt>terceiros</dt><dd>NVIDIA Profile Inspector (MIT)</dd></>}
           </dl>
         </div>
       </div>

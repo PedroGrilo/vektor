@@ -39,12 +39,24 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      # Vektor Lite: a single portable .exe (no installer) for clients' PCs.
+      - name: Build Vektor Lite (portable)
+        shell: bash
+        run: |
+          bun run tauri:lite
+          version=$(node -p "require('./package.json').version")
+          mkdir -p dist-lite
+          cp src-tauri/target/release/vektor.exe "dist-lite/Vektor-Lite_${version}_portable.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: vektor-setup
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/nsis/*.sig
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vektor-lite-portable
+          path: dist-lite/*.exe
       # `latest.json` is what the in-app updater fetches from the latest release.
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -54,5 +66,5 @@ jobs:
         run: |
           bun scripts/release-manifest.mjs write "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" \
             src-tauri/target/release/bundle/nsis RELEASE_NOTES.md latest.json
-          gh release create "$GITHUB_REF_NAME" src-tauri/target/release/bundle/nsis/*.exe latest.json \
+          gh release create "$GITHUB_REF_NAME" src-tauri/target/release/bundle/nsis/*.exe dist-lite/*.exe latest.json \
             --title "Vektor $GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md

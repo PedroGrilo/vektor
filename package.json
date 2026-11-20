@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:lite": "vite --mode lite",
     "build": "tsc -b && vite build",
+    "build:lite": "tsc -b && vite build --mode lite",
+    "tauri:lite": "tauri build --features lite --config src-tauri/tauri.lite.conf.json --no-bundle",
     "lint": "oxlint",
     "preview": "vite preview"
   },

@@ -3,6 +3,7 @@ import { ArrowRight, Cpu, Gamepad2, MemoryStick, MonitorCog, Rocket, ShieldCheck
 import type { PageId } from "../App";
 import { backend } from "../mock";
 import { Gauge, PageHead, useLiveStats, useLoad, useToast } from "../ui";
+import WinUtilCard from "../WinUtil";
 
 export default function Dashboard({ go }: { go: (p: PageId) => void }) {
   const toast = useToast();
@@ -15,7 +16,8 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
   const applied = available.filter((t) => t.applied);
   const score = available.length ? Math.round((applied.length / available.length) * 100) : 0;
   // One-click boost only touches low-risk tweaks that need no reboot and ask nothing.
-  const quick = available.filter((t) => !t.applied && t.risk === "low" && !t.requiresReboot && !t.question);
+  // Lite also leaves the power plan alone: clients' laptops should keep their battery life.
+  const quick = available.filter((t) => !t.applied && t.risk === "low" && !t.requiresReboot && !t.question && !(__LITE__ && t.category === "power"));
 
   const boost = async () => {
     setBoosting(true);
@@ -90,8 +92,8 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
         <Spec icon={<MemoryStick size={18} />} label="Sistema" value={s ? `${s.osName}` : "—"} extra={s ? `build ${s.osBuild} · ${s.ramTotalGb} GB RAM` : ""} />
       </div>
 
-      <div className="grid-2" style={{ marginTop: 16 }}>
-        <div className="panel row" style={{ gap: 16 }}>
+      {!__LITE__ && (
+        <div className="panel row" style={{ gap: 16, marginTop: 16 }}>
           <Gamepad2 size={22} color="var(--accent)" />
           <div style={{ flex: 1 }}>
             <h3>Os teus jogos</h3>
@@ -99,6 +101,10 @@ export default function Dashboard({ go }: { go: (p: PageId) => void }) {
           </div>
           <button className="btn" onClick={() => go("games")}>Abrir <ArrowRight size={15} /></button>
         </div>
+      )}
+
+      <div className="grid-2" style={{ marginTop: 16 }}>
+        <WinUtilCard />
         <div className="panel row" style={{ gap: 16 }}>
           <ShieldCheck size={22} color="var(--ok)" />
           <div style={{ flex: 1 }}>

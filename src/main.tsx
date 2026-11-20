@@ -8,6 +8,9 @@ import "./styles.css";
 import "./components.css";
 import App from "./App";
 
+// Lite swaps the five palette colours (see styles.css).
+if (__LITE__) document.documentElement.dataset.edition = "lite";
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />

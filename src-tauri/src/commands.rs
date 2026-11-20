@@ -2,7 +2,7 @@
 //! Blocking work runs on the blocking thread pool so the UI never stalls.
 
 use crate::error::{Error, Result};
-use crate::{appsettings, cleanup, cs2, diagnostics, display, dns, games, journal, memory, nvidia, session, startup, system, tweaks, updates, win};
+use crate::{appsettings, cleanup, cs2, diagnostics, display, dns, games, journal, memory, nvidia, session, startup, system, tweaks, updates, win, winutil};
 
 async fn blocking<T, F>(f: F) -> Result<T>
 where
@@ -379,4 +379,11 @@ pub async fn dns_apply(provider: String) -> Result<dns::DnsStatus> {
 #[tauri::command]
 pub async fn dns_revert() -> Result<dns::DnsStatus> {
     blocking(dns::revert).await
+}
+
+// ---------- external tools ----------
+
+#[tauri::command]
+pub async fn open_winutil() -> Result<()> {
+    blocking(winutil::open).await
 }

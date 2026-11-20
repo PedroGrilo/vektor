@@ -149,6 +149,7 @@ const mock: typeof api = {
   exportDiagnostics: () => wait("C:\\Users\\cliente\\Desktop\\Vektor-diagnostico-20261016.zip", 900),
   updateCheck: () => wait({ currentVersion: __APP_VERSION__, available: true, version: "1.2.0", notes: "- Exemplo de notas de versão\n- Só aparece na pré-visualização no browser", date: "2026-12-01T10:00:00Z" }, 900),
   updateInstall: () => wait(undefined, 2500),
+  openWinUtil: () => wait(undefined, 400),
 };
 
 export const backend: typeof api = inTauri ? api : mock;

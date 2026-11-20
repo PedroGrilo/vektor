@@ -18,8 +18,12 @@ mod tweaks;
 mod undo;
 mod updates;
 mod win;
+mod winutil;
 
 use tauri::Manager;
+
+/// Vektor Lite is a portable exe run on demand: no tray, no background watcher, closing quits.
+const LITE: bool = cfg!(feature = "lite");
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -29,15 +33,17 @@ pub fn run() {
         return;
     }
     let settings = appsettings::load();
-    let start_hidden = settings.start_minimized && std::env::args().any(|a| a == "--minimized");
+    let start_hidden = !LITE && settings.start_minimized && std::env::args().any(|a| a == "--minimized");
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             // Undo a game session left behind by a crash, then watch for the configured games.
             session::recover();
-            session::spawn_watcher();
-            tray::build(app.handle())?;
+            if !LITE {
+                session::spawn_watcher();
+                tray::build(app.handle())?;
+            }
             if start_hidden && let Some(w) = app.get_webview_window("main") {
                 let _ = w.hide();
             }
@@ -46,6 +52,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             // Keep running in the tray so the game session watcher stays active.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && !LITE
                 && appsettings::load().close_to_tray
             {
                 api.prevent_close();
@@ -128,6 +135,8 @@ pub fn run() {
             commands::dns_status,
             commands::dns_apply,
             commands::dns_revert,
+            // external tools
+            commands::open_winutil,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vektor");
