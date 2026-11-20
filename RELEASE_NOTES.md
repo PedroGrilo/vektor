@@ -1,15 +1,9 @@
-## Vektor 1.2.0
+## Vektor 1.3.0
 
 ### Novidades
-- **Jogos**: o Vektor deixa de ser só para o CS2. A nova página Jogos encontra os jogos da Steam, Epic, GOG, Ubisoft e Riot (e os que adicionares à mão) e otimiza cada um: prioridade de CPU alta, GPU de alto desempenho e sem otimizações de ecrã inteiro. Tudo reversível.
-- **Modo Jogo para qualquer jogo**: escolhe que jogos ativam o Modo Jogo. Fechar apps e afinidade de CPU aplicam-se a todos; a resolução e a vibrance só aos jogos que marcares (por exemplo, 4:3 só no CS2).
-- **Arranque**: nova página para escolher que programas abrem com o Windows, com o mesmo interruptor do Gestor de Tarefas.
-- **Serviços com pergunta**: novo separador em Otimizações para desligar serviços que não usas (impressão, Fax, Xbox, Bluetooth, mapas, indexação, SysMain, biometria). Cada um pergunta primeiro se precisas dele.
-- **Rede**: teste de DNS (Cloudflare, Google, Quad9, OpenDNS e o teu atual) com troca num clique, e placa de rede sem poupança de energia.
-- **Ponto de restauro do Windows**: criado sozinho antes da primeira alteração de risco médio ou alto, e também à mão em Restaurar.
-- **Restaurar** mostra agora todas as alterações: jogos, arranque, DNS e NVIDIA.
+- **Vektor Lite (portátil)**: nova edição para PCs que não são de jogos (clientes, escritório, família). É um só ficheiro, `Vektor-Lite_1.3.0_portable.exe`, que corre sem instalar nada, por exemplo a partir de uma pen. Tem o Painel, Otimizações, Arranque, Limpeza, Rede e Restaurar, sem jogos, CS2, NVIDIA, serviço de memória, bandeja nem atualizações automáticas. As otimizações só para jogos ou que gastam bateria ficam escondidas e o "Otimizar agora" não mexe no plano de energia. Usa uma paleta azul própria.
+- **Chris Titus WinUtil**: novo cartão no Painel (nas duas edições) que, depois de confirmares, abre o WinUtil numa janela do PowerShell como administrador. As alterações feitas no WinUtil não ficam em Restaurar.
 
 ### Notas
-- O Modo Jogo continua a funcionar com o CS2 como antes; as tuas definições mantêm-se.
-- O DNS novo tem efeito total depois de religar a rede ou reiniciar o PC.
-- Esta versão chega pela própria app: Definições → Atualizações → Atualizar e reiniciar.
+- Na Lite as alterações ficam guardadas em %ProgramData%\Vektor: se voltares a correr o .exe mais tarde, podes revertê-las em Restaurar.
+- A versão completa chega pela própria app: Definições → Atualizações → Atualizar e reiniciar.
