@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Vektor",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "identifier": "com.linkconsulting.vektor",
   "build": {
     "frontendDist": "../dist",
@@ -33,7 +33,7 @@
     "targets": [
       "nsis"
     ],
-    "publisher": "Link Consulting",
+    "publisher": "grilo.net",
     "shortDescription": "Otimizador de PC e CS2",
     "icon": [
       "icons/32x32.png",
