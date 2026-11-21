@@ -18,13 +18,22 @@ use crate::error::Result;
 const SERVICE_TWEAK_ID: &str = "memory-service";
 
 pub const SERVICE_ARG: &str = "--memory-service";
+/// Run by the Vektor Lite installer: install and start the service, then exit.
+pub const INSTALL_ARG: &str = "--install-memory-service";
+
+const LITE: bool = cfg!(feature = "lite");
+
+// Lite has its own service so installing or removing one edition never touches the other's.
 #[cfg_attr(not(windows), allow(dead_code))]
-pub const SERVICE_NAME: &str = "VektorMemory";
+pub const SERVICE_NAME: &str = if LITE { "VektorLiteMemory" } else { "VektorMemory" };
 #[cfg_attr(not(windows), allow(dead_code))]
-pub const SERVICE_DISPLAY: &str = "Vektor Memory Cleaner";
+pub const SERVICE_DISPLAY: &str = if LITE { "Vektor Lite Memory Cleaner" } else { "Vektor Memory Cleaner" };
 #[cfg_attr(not(windows), allow(dead_code))]
-pub const SERVICE_DESCRIPTION: &str =
-    "Limpa a lista de memória em espera (standby) quando a memória livre fica baixa, para reduzir stutters em jogos.";
+pub const SERVICE_DESCRIPTION: &str = if LITE {
+    "Limpa a lista de memória em espera (standby) quando a memória livre fica baixa, para manter o PC fluido com pouca RAM."
+} else {
+    "Limpa a lista de memória em espera (standby) quando a memória livre fica baixa, para reduzir stutters em jogos."
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +51,19 @@ impl Default for MemoryConfig {
 }
 
 impl MemoryConfig {
+    /// Lite runs on PCs with little RAM, so it purges earlier and checks more often:
+    /// standby from 512 MB, free memory below a quarter of the RAM (1-4 GB), every 3 s.
+    /// 4 GB -> 1024 MB, 8 GB -> 2048 MB, 16 GB or more -> 4096 MB.
+    pub fn low_ram(total_mb: u64) -> Self {
+        let quarter = (total_mb / 4 / 256) * 256;
+        Self { enabled: true, standby_threshold_mb: 512, free_threshold_mb: quarter.clamp(1024, 4096), interval_sec: 3 }
+    }
+
+    /// What the service uses before anyone saved rules.
+    pub fn edition_default() -> Self {
+        if LITE { Self::low_ram(total_memory_mb()) } else { Self::default() }
+    }
+
     pub fn clamped(mut self) -> Self {
         self.standby_threshold_mb = self.standby_threshold_mb.clamp(256, 65536);
         self.free_threshold_mb = self.free_threshold_mb.clamp(256, 65536);
@@ -64,6 +86,8 @@ pub struct MemoryStatus {
     pub last_purge: Option<String>,
     pub last_check: Option<String>,
     pub last_error: Option<String>,
+    /// The service needs the app installed in Program Files (not the portable exe).
+    pub service_allowed: bool,
 }
 
 /// State reported by the service: purge counters, a heartbeat and the last failure.
@@ -94,7 +118,7 @@ pub(crate) fn parse_config(bytes: &[u8]) -> MemoryConfig {
 }
 
 pub(crate) fn load_config() -> MemoryConfig {
-    std::fs::read(config_path()).map(|b| parse_config(&b)).unwrap_or_default()
+    std::fs::read(config_path()).map(|b| parse_config(&b)).unwrap_or_else(|_| MemoryConfig::edition_default())
 }
 
 fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
@@ -162,6 +186,7 @@ pub fn status() -> Result<MemoryStatus> {
         // Heartbeat and error describe a live service; stale ones would mislead.
         last_check: counters.last_check.filter(|_| running),
         last_error: counters.last_error.filter(|_| running),
+        service_allowed: service::install_allowed(),
     })
 }
 
@@ -174,7 +199,7 @@ pub fn set_config(c: &MemoryConfig) -> Result<MemoryStatus> {
 pub fn install_service() -> Result<MemoryStatus> {
     // Make sure the service starts with a valid config file.
     if !config_path().exists() {
-        write_atomic(&config_path(), &serde_json::to_vec_pretty(&MemoryConfig::default())?)?;
+        write_atomic(&config_path(), &serde_json::to_vec_pretty(&MemoryConfig::edition_default())?)?;
     }
     let already = service::query()?.0;
     if !already {
@@ -248,6 +273,15 @@ mod tests {
         assert!(!should_purge(&c, 2048 * MB, 4096 * MB));
         let off = MemoryConfig { enabled: false, ..c };
         assert!(!should_purge(&off, 2048 * MB, 512 * MB));
+    }
+
+    #[test]
+    fn low_ram_rules() {
+        assert_eq!(MemoryConfig::low_ram(3900).free_threshold_mb, 1024);
+        assert_eq!(MemoryConfig::low_ram(8192).free_threshold_mb, 2048);
+        assert_eq!(MemoryConfig::low_ram(65536).free_threshold_mb, 4096);
+        assert_eq!(MemoryConfig::low_ram(4096).standby_threshold_mb, 512);
+        assert_eq!(MemoryConfig::low_ram(4096), MemoryConfig::low_ram(4096).clamped());
     }
 
     #[test]

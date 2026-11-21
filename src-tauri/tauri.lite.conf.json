@@ -22,7 +22,16 @@
     ]
   },
   "bundle": {
-    "shortDescription": "Otimizador de PC (portátil)",
+    "shortDescription": "Otimizador de PC leve, com limpeza de memória",
+    "targets": [
+      "nsis"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "installerHooks": "./windows/hooks-lite.nsh"
+      }
+    },
     "resources": [],
     "createUpdaterArtifacts": false
   }

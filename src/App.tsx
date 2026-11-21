@@ -35,8 +35,8 @@ const FULL_NAV: NavItem[] = [
   { id: "restore", label: "Restaurar", icon: History, section: "Segurança" },
   { id: "settings", label: "Definições", icon: SettingsIcon },
 ];
-// Vektor Lite (portable, for clients' PCs): no gaming, NVIDIA or memory service.
-const LITE_PAGES = new Set<PageId>(["dashboard", "optimize", "startup", "cleanup", "network", "restore", "settings"]);
+// Vektor Lite (for clients' PCs): no gaming or NVIDIA; the memory cleaner stays for low-RAM PCs.
+const LITE_PAGES = new Set<PageId>(["dashboard", "optimize", "startup", "cleanup", "memory", "network", "restore", "settings"]);
 const NAV: NavItem[] = __LITE__
   ? FULL_NAV.filter((n) => LITE_PAGES.has(n.id)).map((n) => (n.id === "restore" ? { ...n, section: "Segurança" } : n))
   : FULL_NAV;
@@ -82,7 +82,7 @@ function SidebarStatus() {
     <div className="status-card">
       <div className="row between" style={{ marginBottom: 6 }}>
         <span className="label">Estado</span>
-        {__LITE__ ? <span className="chip">portátil</span>
+        {__LITE__ ? <span className="chip">lite</span>
           : stats?.activeGame ? <span className="chip on"><span className="dot" />{stats.activeGame}</span>
           : stats?.cs2Running ? <span className="chip on"><span className="dot" />CS2 ativo</span>
           : <span className="chip">em espera</span>}

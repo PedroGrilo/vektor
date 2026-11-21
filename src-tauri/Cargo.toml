@@ -15,8 +15,8 @@ name = "vektor_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
-# Portable "Vektor Lite" for clients' PCs: no games, CS2, NVIDIA, memory service,
-# tray or updater. Built with `bunx tauri build --features lite --config src-tauri/tauri.lite.conf.json --no-bundle`.
+# "Vektor Lite" for clients' PCs: no games, CS2, NVIDIA, tray or updater; its installer
+# turns on the memory cleaner service. Built with `bun run tauri:lite` (installer + bare exe).
 lite = []
 
 [build-dependencies]

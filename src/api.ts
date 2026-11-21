@@ -157,6 +157,8 @@ export interface MemoryStatus {
   lastCheck: string | null;
   /** why the service could not read memory or purge, if it failed */
   lastError: string | null;
+  /** false for the portable exe: the service needs the app installed in Program Files */
+  serviceAllowed: boolean;
 }
 
 // ---------- nvidia (Profile Inspector, global "Base Profile") ----------

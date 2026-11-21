@@ -51,7 +51,7 @@ export default function Settings() {
       <PageHead eyebrow="// definições" title="Definições" desc="Comportamento da aplicação, atualizações e suporte." />
 
       {__LITE__ ? (
-        <div className="callout info"><Info size={18} /><span>Versão portátil: não instala nada, não arranca com o Windows e não se atualiza sozinha. As alterações ficam em %ProgramData%\Vektor e podem ser revertidas em Restaurar, mesmo depois de apagar o .exe e voltar a corrê-lo.</span></div>
+        <div className="callout info"><Info size={18} /><span>Vektor Lite não se atualiza sozinho. Instalado, a limpeza de memória corre como serviço do Windows (desinstalar remove-o); o .exe portátil não instala nada. As alterações ficam em %ProgramData%\Vektor e podem ser revertidas em Restaurar, mesmo depois de apagar o .exe e voltar a corrê-lo.</span></div>
       ) : <Updates />}
 
       <div className="stack" style={{ gap: 10, marginTop: ROWS.length ? 16 : 0 }}>
@@ -84,7 +84,7 @@ export default function Settings() {
             <dt>github</dt><dd><a onClick={() => link(AUTHOR_URL)}>github.com/PedroGrilo</a></dd>
             <dt>projeto</dt><dd><a onClick={() => link(PROJECT_URL)}>github.com/PedroGrilo/vektor</a></dd>
             <dt>dados</dt><dd className="mono">%ProgramData%\Vektor</dd>
-            <dt>edição</dt><dd>{__LITE__ ? "Lite (portátil)" : "Completa"}</dd>
+            <dt>edição</dt><dd>{__LITE__ ? "Lite" : "Completa"}</dd>
             {!__LITE__ && <><dt>terceiros</dt><dd>NVIDIA Profile Inspector (MIT)</dd></>}
           </dl>
         </div>

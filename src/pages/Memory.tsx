@@ -6,6 +6,7 @@ import { nominalGb, suggestedRules } from "../suggest";
 import { PageHead, Toggle, fmtMb, usePoll, useToast } from "../ui";
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString("pt-PT");
+const SERVICE = __LITE__ ? "VektorLiteMemory" : "VektorMemory";
 
 export default function Memory() {
   const toast = useToast();
@@ -55,7 +56,9 @@ export default function Memory() {
   return (
     <>
       <PageHead eyebrow="// memória" title="Limpeza de Standby"
-        desc="Como o ISLC: um serviço do Windows vigia a lista de standby e purga-a quando a memória livre fica baixa. Ajuda contra stutters em PCs com pouca RAM livre."
+        desc={__LITE__
+          ? "Um serviço do Windows vigia a memória e purga a lista de standby sempre que a memória livre fica baixa, para o PC não ficar lento com pouca RAM."
+          : "Como o ISLC: um serviço do Windows vigia a lista de standby e purga-a quando a memória livre fica baixa. Ajuda contra stutters em PCs com pouca RAM livre."}
         right={
           <button className="btn" disabled={busy !== null} onClick={() => act("purge", backend.memoryPurgeNow, "Lista de standby purgada")}>
             {busy === "purge" ? <Loader2 size={15} className="spin" /> : <Zap size={15} />} Purgar agora
@@ -77,8 +80,8 @@ export default function Memory() {
             <div className="row between">
               <div className="row"><Power size={18} color={s?.serviceRunning ? "var(--ok)" : "var(--text-faint)"} />
                 <div>
-                  <h3>Serviço VektorMemory</h3>
-                  <div className="sub">{!s ? "A verificar…" : s.serviceRunning ? "A correr — arranca com o Windows." : s.serviceInstalled ? "Instalado, mas parado." : "Não instalado."}</div>
+                  <h3>Serviço {SERVICE}</h3>
+                  <div className="sub">{!s ? "A verificar…" : s.serviceRunning ? "A correr — arranca com o Windows." : s.serviceInstalled ? "Instalado, mas parado." : !s.serviceAllowed ? "Só disponível com o Vektor instalado — esta cópia é portátil." : "Não instalado."}</div>
                 </div>
               </div>
               {s?.serviceInstalled ? (
@@ -93,7 +96,7 @@ export default function Memory() {
                   </button>
                 </div>
               ) : (
-                <button className="btn primary" disabled={busy !== null || !s} onClick={() => act("svc", backend.memoryInstallService, "Serviço instalado e iniciado")}>
+                <button className="btn primary" disabled={busy !== null || !s || !s.serviceAllowed} onClick={() => act("svc", backend.memoryInstallService, "Serviço instalado e iniciado")}>
                   {busy === "svc" && <Loader2 size={15} className="spin" />} Instalar
                 </button>
               )}

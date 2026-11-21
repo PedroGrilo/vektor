@@ -39,14 +39,18 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      # Vektor Lite: a single portable .exe (no installer) for clients' PCs.
-      - name: Build Vektor Lite (portable)
+      # Vektor Lite: an installer (with the memory cleaner service) and a portable .exe.
+      # Its setup is moved out of the nsis folder so the release manifest only sees Vektor's.
+      - name: Build Vektor Lite (installer + portable)
         shell: bash
         run: |
           bun run tauri:lite
           version=$(node -p "require('./package.json').version")
           mkdir -p dist-lite
-          cp src-tauri/target/release/vektor.exe "dist-lite/Vektor-Lite_${version}_portable.exe"
+          mv src-tauri/target/release/bundle/nsis/Vektor\ Lite_*-setup.exe "dist-lite/Vektor-Lite_${version}_x64-setup.exe"
+          exe="src-tauri/target/release/Vektor Lite.exe"
+          [ -f "$exe" ] || exe=src-tauri/target/release/vektor.exe
+          cp "$exe" "dist-lite/Vektor-Lite_${version}_portable.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: vektor-setup
@@ -55,7 +59,7 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.sig
       - uses: actions/upload-artifact@v4
         with:
-          name: vektor-lite-portable
+          name: vektor-lite
           path: dist-lite/*.exe
       # `latest.json` is what the in-app updater fetches from the latest release.
       - name: Publish GitHub release

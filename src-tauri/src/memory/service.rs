@@ -148,6 +148,10 @@ mod imp {
         }
     }
 
+    pub fn install_allowed() -> bool {
+        std::env::current_exe().is_ok_and(|e| check_exe_location(&e).is_ok())
+    }
+
     pub fn install() -> Result<()> {
         let exe = std::env::current_exe()?;
         check_exe_location(&exe)?;
@@ -229,6 +233,10 @@ mod imp {
         Err(Error::Unsupported)
     }
 
+    pub fn install_allowed() -> bool {
+        false
+    }
+
     pub fn install() -> Result<()> {
         Err(Error::Unsupported)
     }
@@ -246,6 +254,11 @@ pub fn run_as_service() {
 /// (installed, running)
 pub(crate) fn query() -> Result<(bool, bool)> {
     imp::query()
+}
+
+/// False for the portable exe: the service may only run from Program Files.
+pub(crate) fn install_allowed() -> bool {
+    imp::install_allowed()
 }
 
 pub(crate) fn install() -> Result<()> {

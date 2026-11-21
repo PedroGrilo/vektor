@@ -45,7 +45,7 @@ const cleanTargets: CleanTarget[] = [
   { id: "prefetch", title: "Prefetch", description: "Dados de arranque rápido de apps.", recommended: false, warning: "Não dá FPS; as apps abrem mais devagar até o Windows reconstruir.", sizeBytes: 42 * MB, files: 256, available: true },
 ];
 let memCfg: MemoryConfig = { enabled: true, standbyThresholdMb: 1024, freeThresholdMb: 1024, intervalSec: 5 };
-let mem: MemoryStatus = { serviceInstalled: false, serviceRunning: false, config: memCfg, totalMb: 32768, freeMb: 812, standbyMb: 14320, modifiedMb: 210, purgeCount: 0, lastPurge: null, lastCheck: null, lastError: null };
+let mem: MemoryStatus = { serviceInstalled: false, serviceRunning: false, config: memCfg, totalMb: 32768, freeMb: 812, standbyMb: 14320, modifiedMb: 210, purgeCount: 0, lastPurge: null, lastCheck: null, lastError: null, serviceAllowed: true };
 let nv: NvidiaStatus = { nvidiaGpu: true, inspectorAvailable: true, applied: false, cs2Applied: false, inspectorVersion: "3.0.2.1" };
 let sessCfg: SessionConfig = { enabled: true, closeApps: ["Discord.exe", "chrome.exe"], reopenApps: true, affinity: "auto", affinityMask: null, resolution: { width: 1280, height: 960, refresh: 144 }, vibrance: 70,
   games: [{ exe: "cs2.exe", name: "Counter-Strike 2", display: true }, { exe: "fortniteclient-win64-shipping.exe", name: "Fortnite", display: false }] };

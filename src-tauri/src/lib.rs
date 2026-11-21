@@ -32,6 +32,10 @@ pub fn run() {
         memory::service::run_as_service();
         return;
     }
+    // `"Vektor Lite.exe" --install-memory-service` is run by the Lite installer (already elevated).
+    if std::env::args().any(|a| a == memory::INSTALL_ARG) {
+        std::process::exit(if memory::install_service().is_ok() { 0 } else { 1 });
+    }
     let settings = appsettings::load();
     let start_hidden = !LITE && settings.start_minimized && std::env::args().any(|a| a == "--minimized");
     tauri::Builder::default()

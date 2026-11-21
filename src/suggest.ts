@@ -16,6 +16,12 @@ const STEP = 256; // the sliders move in 256 MB steps
  * 8 GB -> 1024 MB, 12 GB -> 1536 MB, 16 GB -> 2048 MB, 32 GB or more -> 4096 MB.
  */
 export function suggestedRules(totalMb: number): MemoryRules {
+  // Lite targets PCs with little RAM: purge earlier and more often (same rule as the
+  // Rust `MemoryConfig::low_ram`). 4 GB -> 1024 MB, 8 GB -> 2048 MB, 16 GB+ -> 4096 MB.
+  if (__LITE__) {
+    const quarter = Math.floor(totalMb / 4 / STEP) * STEP;
+    return { standbyThresholdMb: 512, freeThresholdMb: Math.min(4 * GB, Math.max(GB, quarter)), intervalSec: 3 };
+  }
   // Start from the installed amount: Windows reports a little less, and that
   // small difference should not move the suggestion.
   const eighth = Math.round((nominalGb(totalMb) * GB) / 8 / STEP) * STEP;
